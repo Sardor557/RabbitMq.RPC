@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>disable</Nullable>
+
+		<PackageId>RabbitRpc.Client</PackageId>
+		<Title>RabbitRpc.Client</Title>
+		<Description>Client-side RabbitMQ RPC package with DI integration and typed proxies.</Description>
+		<PackageTags>rabbitmq;rpc;dotnet;di</PackageTags>
+
+		<Version>1.0.2</Version>
+		<Authors>AsbtCore</Authors>
+		<Company>AsbtCore</Company>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/Sardor557/AsbtCore.Broker</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker.git</RepositoryUrl>
+
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+		<IsPackable>true</IsPackable>
+
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryType>git</RepositoryType>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+
+		<TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeReferencedProjectsInPackage</TargetsForTfmSpecificBuildOutput>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\AsbtCore.Broker.Core\AsbtCore.Broker.Core.csproj" PrivateAssets="all" />
+		<ProjectReference Include="..\AsbtCore.Broker.RabbitMq\AsbtCore.Broker.RabbitMq.csproj" PrivateAssets="all" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<Target Name="IncludeReferencedProjectsInPackage">
+		<ItemGroup>
+			<BuildOutputInPackage Include="$(OutputPath)AsbtCore.Broker.Core.dll" />
+			<BuildOutputInPackage Include="$(OutputPath)AsbtCore.Broker.RabbitMq.dll" />
+		</ItemGroup>
+	</Target>
+</Project>
