@@ -51,6 +51,7 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="AsbtCore.Broker.ClientServer.Tests" />
+		<InternalsVisibleTo Include="AsbtCore.Broker.Benchmarks" />
 	</ItemGroup>
 
 	<Target Name="IncludeReferencedProjectsInPackage">
