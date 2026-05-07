@@ -185,3 +185,40 @@ dotnet test RabbitMq.RPC.sln
 
 - .NET 8
 - RabbitMQ 3.12+ (RabbitMQ.Client 7.x)
+
+## Migration v2 → v3
+
+v3.0.0 is a reliability-focused release with breaking wire and behavior changes. v2.x and v3.x are not interoperable; upgrade clients and servers in lockstep.
+
+### Wire-format change
+
+Parameter and result type names on the wire now use the stable form
+`Namespace.TypeName, AssemblySimpleName`, dropping `Version`, `Culture`, and `PublicKeyToken`.
+This means routine version bumps of your contract assemblies no longer break the wire format.
+
+A v2 client cannot talk to a v3 server (and vice versa) — the server's method-key lookup will fail with `method_not_found`.
+
+### Behavior changes
+
+- **`TransportReconnectedException`** (new public type in `AsbtCore.Broker.Core.Exceptions`):
+  thrown into pending RPC tasks when the broker reconnects. Caller decides whether to retry.
+  In v2, pending tasks would hang until process exit.
+- **`RpcPublishFailedException`** (new public type): thrown immediately when the broker rejects
+  (nack/return) the publish of an RPC request. In v2, callers only saw `OperationCanceledException`
+  after the configured RPC timeout elapsed.
+- **Per-route DLQ**: each RPC route now has a companion durable queue `{route}.dead`. Poison
+  messages (malformed payload, dispatcher-internal failure, reply-publish failure) move there
+  after a single attempt. v2 used `BasicNackAsync(requeue: true)`, producing infinite loops on
+  deterministically broken messages. Plan ops alerting on `*.dead` queue depth.
+- **Reply queue naming**: reply queues are now declared as `rpc-reply-{ClientProvidedName}-{guid}`
+  (durable: false, auto-delete: true, non-exclusive). Update any monitoring filters that matched
+  the old `amq.gen-*` pattern.
+
+### Operator action items
+
+1. Upgrade client and server packages in lockstep.
+2. Expect new queues named `*.dead` per RPC route in your broker.
+3. Add `catch (TransportReconnectedException)` and/or `catch (RpcPublishFailedException)`
+   clauses where your code awaits proxy methods, if you want to handle these explicitly.
+4. Set broker policies (TTL, max length) on the new `*.dead` queues if you don't drain them
+   manually.
