@@ -355,3 +355,13 @@ graph LR
 2. Ожидайте появления новых очередей `*.dead` на каждый RPC-маршрут в broker — настройте политики TTL/max-length по необходимости.
 3. Добавьте `catch (TransportReconnectedException)` и/или `catch (RpcPublishFailedException)` там, где вы awaite методы прокси.
 4. Обновите фильтры мониторинга, которые совпадали со старым паттерном reply-очереди `amq.gen-*`.
+
+---
+
+## Миграция v3.0 → v3.1
+
+- **Серверная диспетчеризация сообщений теперь параллельная по умолчанию.** `RpcOptions.ConsumerDispatchConcurrency` по умолчанию равен `PrefetchCount`. Существующие хендлеры должны быть потокобезопасны. Задайте `RpcOptions.ConsumerDispatchConcurrency = 1`, чтобы вернуть последовательное поведение v3.0.
+- В `IRpcTransportHost` добавлен `StopAsync(CancellationToken)` (default interface method). Кастомные транспорты должны переопределить метод, чтобы дренировать in-flight хендлеры перед disposal.
+- `IRpcTransportHost.Dispose()` теперь sync-over-async last-resort путь. Предпочитайте `DisposeAsync()` (или disposal через DI).
+- `RpcRequest.RequestId` больше не инициализируется автоматически в property initializer. Клиентский код, конструирующий `RpcRequest` напрямую, должен задавать `RequestId` явно.
+- Обработка poison reply: `OnResponseReceivedAsync` теперь пробрасывает ошибки десериализации в ожидающий caller вместо тихого логирования и ожидания timeout.
