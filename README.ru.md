@@ -87,7 +87,7 @@ sequenceDiagram
     Host ->> MQ   : BasicPublish(RpcResponse)<br/>routingKey = replyTo<br/>correlationId = requestId
     MQ   -->> RC  : Доставка ответа
     RC   -->> Px  : десериализованный результат
-    Px   -->> App : Task&lt;int&gt; выполнен
+    Px   -->> App : Task~int~ выполнен
 ```
 
 ### Структура solution

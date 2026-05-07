@@ -27,6 +27,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsbtCore.Broker.ClientServe
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{EB97FEF3-E8A8-406A-A7AE-A3447AC2BD39}"
 	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
 		README.ru.md = README.ru.md
 	EndProjectSection
 EndProject
