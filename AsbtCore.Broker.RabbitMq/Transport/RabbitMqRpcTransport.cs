@@ -183,24 +183,25 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
 
     private Task OnResponseReceivedAsync(object sender, BasicDeliverEventArgs ea)
     {
+        var correlationId = ea.BasicProperties.CorrelationId;
+        if (string.IsNullOrWhiteSpace(correlationId))
+            return Task.CompletedTask;
+
+        if (!pending.TryRemove(correlationId, out var tcs))
+            return Task.CompletedTask;
+
         try
         {
-            var correlationId = ea.BasicProperties.CorrelationId;
-
-            if (string.IsNullOrWhiteSpace(correlationId))
-                return Task.CompletedTask;
-
             var response = serializer.Deserialize<RpcResponse>(ea.Body);
-
             if (response is null)
-                return Task.CompletedTask;
-
-            if (pending.TryRemove(correlationId, out var tcs))
+                tcs.TrySetException(new RpcProtocolException("Empty RPC response."));
+            else
                 tcs.TrySetResult(response);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error while handling RPC response.");
+            tcs.TrySetException(ex);
+            logger.LogError(ex, "Error deserializing RPC response. CorrelationId: {Id}", correlationId);
         }
 
         return Task.CompletedTask;
