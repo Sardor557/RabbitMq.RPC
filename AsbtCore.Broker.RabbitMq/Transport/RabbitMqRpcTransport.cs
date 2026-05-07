@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -13,6 +15,7 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
     private readonly IRabbitMqConnectionProvider connectionProvider;
     private readonly ILogger<RabbitMqRpcTransport> logger;
     private readonly IRpcSerializer serializer;
+    private readonly RpcOptions options;
 
     private readonly SemaphoreSlim initLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<RpcResponse>> pending = new();
@@ -25,11 +28,13 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
     public RabbitMqRpcTransport(
         IRabbitMqConnectionProvider connectionProvider,
         ILogger<RabbitMqRpcTransport> logger,
-        IRpcSerializer serializer)
+        IRpcSerializer serializer,
+        IOptions<RpcOptions> options)
     {
         this.connectionProvider = connectionProvider;
         this.logger = logger;
         this.serializer = serializer;
+        this.options = options.Value;
     }
 
     public async Task<RpcResponse> SendAsync(
@@ -106,17 +111,18 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
             publishChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
             replyChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
-            var declareOk = await replyChannel.QueueDeclareAsync(
-                queue: string.Empty,
+            var queueName = $"rpc-reply-{this.options.ClientProvidedName}-{Guid.NewGuid():N}";
+            await replyChannel.QueueDeclareAsync(
+                queue: queueName,
                 durable: false,
-                exclusive: true,
+                exclusive: false,
                 autoDelete: true,
                 arguments: null,
                 passive: false,
                 noWait: false,
                 cancellationToken: cancellationToken);
 
-            replyQueueName = declareOk.QueueName;
+            replyQueueName = queueName;
 
             var consumer = new AsyncEventingBasicConsumer(replyChannel);
             consumer.ReceivedAsync += OnResponseReceivedAsync;
