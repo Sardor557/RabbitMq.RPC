@@ -25,6 +25,12 @@ namespace AsbtCore.Broker.Core.Options
         [Range(1, ushort.MaxValue)]
         public ushort PrefetchCount { get; set; } = 1;
 
+        /// <summary>
+        /// Concurrency level for the consumer dispatcher (per channel). When null, falls back to <see cref="PrefetchCount"/>.
+        /// Server-side handlers must be thread-safe when this is greater than 1.
+        /// </summary>
+        public ushort? ConsumerDispatchConcurrency { get; set; }
+
 
         [Required]
         public string RoutePrefix { get; set; } = "rpc.";

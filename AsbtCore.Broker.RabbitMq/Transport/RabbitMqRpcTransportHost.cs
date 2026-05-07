@@ -43,11 +43,14 @@ namespace AsbtCore.Broker.RabbitMq.Transport
 
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
 
+            var dispatchConcurrency = options.ConsumerDispatchConcurrency ?? options.PrefetchCount;
+
             foreach (var route in routes)
             {
                 var channelOptions = new CreateChannelOptions(
                     publisherConfirmationsEnabled: true,
-                    publisherConfirmationTrackingEnabled: true);
+                    publisherConfirmationTrackingEnabled: true,
+                    consumerDispatchConcurrency: dispatchConcurrency);
 
                 var channel = await connection.CreateChannelAsync(
                     options: channelOptions,
