@@ -64,7 +64,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
             var ok = descriptor!.TryGetMethod(nameof(ITestService.AddAsync), paramTypes, out var method);
 
             Assert.IsTrue(ok);
-            Assert.AreEqual(nameof(ITestService.AddAsync), method!.Name);
+            Assert.AreEqual(nameof(ITestService.AddAsync), method!.Method.Name);
         }
 
         [TestMethod]

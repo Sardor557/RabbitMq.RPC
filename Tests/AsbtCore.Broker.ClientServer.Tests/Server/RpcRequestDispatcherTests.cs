@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
+using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Server;
@@ -128,6 +129,63 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
 
             Assert.IsTrue(response.Success);
             Assert.IsNull(response.Result);
+        }
+
+        [TestMethod]
+        public async Task DispatchAsync_UnknownArgumentType_ReturnsTypeNotFoundError()
+        {
+            // Build a dispatcher whose registry has AddAsync keyed with a bogus type name,
+            // so method lookup succeeds but TypeNameCache.Resolve throws for that type name.
+            var (dispatcher, bogusTypeName) = TestDispatcherFactory
+                .CreateWithBogusArgTypeName<ITestService, TestServiceImpl>(nameof(ITestService.AddAsync));
+
+            var request = new RpcRequest
+            {
+                InterfaceName = typeof(ITestService).FullName!,
+                MethodName = nameof(ITestService.AddAsync),
+                Arguments =
+                {
+                    new RpcArgument
+                    {
+                        TypeName = bogusTypeName,
+                        Payload = JsonSerializer.SerializeToElement(1)
+                    }
+                }
+            };
+
+            var response = await dispatcher.DispatchAsync(request);
+
+            Assert.IsFalse(response.Success);
+            Assert.AreEqual("type_not_found", response.Error!.Code);
+        }
+
+        [TestMethod]
+        public async Task DispatchAsync_MalformedArgumentPayload_ReturnsDeserializationError()
+        {
+            var dispatcher = TestDispatcherFactory.Create<ITestService, TestServiceImpl>();
+            var request = new RpcRequest
+            {
+                InterfaceName = typeof(ITestService).FullName!,
+                MethodName = nameof(ITestService.AddAsync),
+                Arguments =
+                {
+                    new RpcArgument
+                    {
+                        TypeName = typeof(int).AssemblyQualifiedName!,
+                        Payload = JsonSerializer.SerializeToElement("not an int")
+                    },
+                    new RpcArgument
+                    {
+                        TypeName = typeof(int).AssemblyQualifiedName!,
+                        Payload = JsonSerializer.SerializeToElement(2)
+                    }
+                }
+            };
+
+            var response = await dispatcher.DispatchAsync(request);
+
+            Assert.IsFalse(response.Success);
+            Assert.AreEqual("deserialization_error", response.Error!.Code);
         }
     }
 }
