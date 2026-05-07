@@ -26,7 +26,7 @@ public class TypeResolutionBench
             t = Mode switch
             {
                 LegacyOrNew.Legacy => Type.GetType(aqn, throwOnError: true)!,
-                LegacyOrNew.New => TypeNameCache.Resolve(aqn),
+                LegacyOrNew.New => StableTypeName.Resolve(aqn),
                 _ => throw new InvalidOperationException()
             };
         }

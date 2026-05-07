@@ -43,7 +43,7 @@ public sealed class RpcRequestDispatcher
                 Type type;
                 try
                 {
-                    type = TypeNameCache.Resolve(arg.TypeName);
+                    type = StableTypeName.Resolve(arg.TypeName);
                 }
                 catch (Exception ex)
                 {
@@ -78,7 +78,7 @@ public sealed class RpcRequestDispatcher
             {
                 RequestId = request.RequestId,
                 Success = true,
-                ResultTypeName = logicalResultType?.AssemblyQualifiedName ?? logicalResultType?.FullName,
+                ResultTypeName = logicalResultType is null ? null : StableTypeName.From(logicalResultType),
                 Result = logicalResultType is null ? null : RpcSerializationHelper.ToElement(result, logicalResultType)
             };
         }

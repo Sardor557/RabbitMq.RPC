@@ -1,4 +1,6 @@
-﻿using AsbtCore.Broker.Core;
+﻿using System;
+using System.Collections.Generic;
+using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
@@ -43,10 +45,28 @@ namespace AsbtCore.Broker.RabbitMq.Transport
 
             foreach (var route in routes)
             {
-                var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+                var channelOptions = new CreateChannelOptions(
+                    publisherConfirmationsEnabled: true,
+                    publisherConfirmationTrackingEnabled: true);
+
+                var channel = await connection.CreateChannelAsync(
+                    options: channelOptions,
+                    cancellationToken: cancellationToken);
 
                 await channel.QueueDeclareAsync(
                     queue: route,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: null,
+                    passive: false,
+                    noWait: false,
+                    cancellationToken: cancellationToken);
+
+                var deadRoute = $"{route}.dead";
+
+                await channel.QueueDeclareAsync(
+                    queue: deadRoute,
                     durable: true,
                     exclusive: false,
                     autoDelete: false,
@@ -62,9 +82,11 @@ namespace AsbtCore.Broker.RabbitMq.Transport
                     cancellationToken: cancellationToken);
 
                 var consumer = new AsyncEventingBasicConsumer(channel);
+                var capturedRoute = route;
+                var capturedDeadRoute = deadRoute;
                 consumer.ReceivedAsync += async (_, ea) =>
                 {
-                    await HandleIncomingAsync(channel, ea, handler, cancellationToken);
+                    await HandleIncomingAsync(channel, ea, handler, capturedRoute, capturedDeadRoute, cancellationToken);
                 };
 
                 await channel.BasicConsumeAsync(
@@ -85,11 +107,12 @@ namespace AsbtCore.Broker.RabbitMq.Transport
             IChannel channel,
             BasicDeliverEventArgs ea,
             Func<RpcRequest, CancellationToken, Task<RpcResponse>> handler,
+            string route,
+            string deadRoute,
             CancellationToken cancellationToken)
         {
             try
             {
-                // Единственная точка десериализации: ReadOnlyMemory<byte> → RpcRequest.
                 var request = serializer.Deserialize<RpcRequest>(ea.Body)
                               ?? throw new InvalidOperationException("Invalid RPC request payload.");
 
@@ -98,22 +121,30 @@ namespace AsbtCore.Broker.RabbitMq.Transport
                 var replyTo = ea.BasicProperties.ReplyTo;
                 if (!string.IsNullOrWhiteSpace(replyTo))
                 {
-                    // Единственная точка сериализации ответа: RpcResponse → byte[].
                     var responseBytes = serializer.Serialize(response);
 
                     var props = new BasicProperties
                     {
                         CorrelationId = ea.BasicProperties.CorrelationId,
-                        ContentType = ea.BasicProperties.ContentType,
+                        ContentType   = ea.BasicProperties.ContentType,
                     };
 
-                    await channel.BasicPublishAsync(
-                        exchange: string.Empty,
-                        routingKey: replyTo,
-                        mandatory: false,
-                        basicProperties: props,
-                        body: responseBytes,
-                        cancellationToken: cancellationToken);
+                    try
+                    {
+                        await channel.BasicPublishAsync(
+                            exchange: string.Empty,
+                            routingKey: replyTo,
+                            mandatory: false,
+                            basicProperties: props,
+                            body: responseBytes,
+                            cancellationToken: cancellationToken);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        logger.LogError(ex,
+                            "Failed to publish RPC reply. CorrelationId: {Id}. Original delivery acked anyway.",
+                            ea.BasicProperties.CorrelationId);
+                    }
                 }
 
                 await channel.BasicAckAsync(
@@ -121,14 +152,51 @@ namespace AsbtCore.Broker.RabbitMq.Transport
                     multiple: false,
                     cancellationToken: cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error while handling incoming RPC request.");
-                await channel.BasicNackAsync(
-                    deliveryTag: ea.DeliveryTag,
-                    multiple: false,
-                    requeue: true,
-                    cancellationToken: cancellationToken);
+                logger.LogError(ex, "Poison RPC message → DLQ {DeadRoute}", deadRoute);
+
+                var deadProps = new BasicProperties
+                {
+                    Headers = new Dictionary<string, object?>
+                    {
+                        ["x-rpc-error"]     = ex.GetType().FullName,
+                        ["x-rpc-error-msg"] = ex.Message,
+                        ["x-rpc-original"]  = route,
+                        ["x-rpc-failed-at"] = DateTimeOffset.UtcNow.ToString("o"),
+                    },
+                };
+
+                try
+                {
+                    await channel.BasicPublishAsync(
+                        exchange: string.Empty,
+                        routingKey: deadRoute,
+                        mandatory: false,
+                        basicProperties: deadProps,
+                        body: ea.Body,
+                        cancellationToken: cancellationToken);
+
+                    await channel.BasicAckAsync(
+                        deliveryTag: ea.DeliveryTag,
+                        multiple: false,
+                        cancellationToken: cancellationToken);
+                }
+                catch (Exception dlqEx) when (dlqEx is not OperationCanceledException)
+                {
+                    logger.LogError(dlqEx,
+                        "DLQ publish failed for {DeadRoute}; dropping original message.", deadRoute);
+
+                    await channel.BasicNackAsync(
+                        deliveryTag: ea.DeliveryTag,
+                        multiple: false,
+                        requeue: false,
+                        cancellationToken: cancellationToken);
+                }
             }
         }
 

@@ -1,8 +1,11 @@
 using System.Collections.Concurrent;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Exceptions;
+using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -13,6 +16,7 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
     private readonly IRabbitMqConnectionProvider connectionProvider;
     private readonly ILogger<RabbitMqRpcTransport> logger;
     private readonly IRpcSerializer serializer;
+    private readonly RpcOptions options;
 
     private readonly SemaphoreSlim initLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<RpcResponse>> pending = new();
@@ -25,11 +29,13 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
     public RabbitMqRpcTransport(
         IRabbitMqConnectionProvider connectionProvider,
         ILogger<RabbitMqRpcTransport> logger,
-        IRpcSerializer serializer)
+        IRpcSerializer serializer,
+        IOptions<RpcOptions> options)
     {
         this.connectionProvider = connectionProvider;
         this.logger = logger;
         this.serializer = serializer;
+        this.options = options.Value;
     }
 
     public async Task<RpcResponse> SendAsync(
@@ -68,19 +74,29 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
 
         try
         {
-            await publishChannel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: route,
-                mandatory: false,
-                basicProperties: properties,
-                body: body,
-                cancellationToken: linkedCts.Token);
+            try
+            {
+                await publishChannel.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: route,
+                    mandatory: false,
+                    basicProperties: properties,
+                    body: body,
+                    cancellationToken: linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                pending.TryRemove(request.RequestId, out _);
+                throw new RpcPublishFailedException(request.RequestId, ex.GetType().Name, ex);
+            }
 
             logger.LogDebug(
                 "RPC request published. RequestId: {RequestId}, Route: {Route}, Method: {Method}",
-                request.RequestId,
-                route,
-                request.MethodName);
+                request.RequestId, route, request.MethodName);
 
             return await tcs.Task;
         }
@@ -103,20 +119,30 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
 
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
 
-            publishChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+            var publishChannelOptions = new CreateChannelOptions(
+                publisherConfirmationsEnabled: true,
+                publisherConfirmationTrackingEnabled: true);
+
+            publishChannel = await connection.CreateChannelAsync(
+                options: publishChannelOptions,
+                cancellationToken: cancellationToken);
             replyChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
-            var declareOk = await replyChannel.QueueDeclareAsync(
-                queue: string.Empty,
+            var queueName = $"rpc-reply-{this.options.ClientProvidedName}-{Guid.NewGuid():N}";
+            await replyChannel.QueueDeclareAsync(
+                queue: queueName,
                 durable: false,
-                exclusive: true,
+                exclusive: false,
                 autoDelete: true,
                 arguments: null,
                 passive: false,
                 noWait: false,
                 cancellationToken: cancellationToken);
 
-            replyQueueName = declareOk.QueueName;
+            replyQueueName = queueName;
+
+            if (replyChannel is IRecoverable recoverable)
+                recoverable.RecoveryAsync += OnRecoverySucceededAsync;
 
             var consumer = new AsyncEventingBasicConsumer(replyChannel);
             consumer.ReceivedAsync += OnResponseReceivedAsync;
@@ -159,6 +185,17 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
             logger.LogError(ex, "Error while handling RPC response.");
         }
 
+        return Task.CompletedTask;
+    }
+
+    private Task OnRecoverySucceededAsync(object? sender, AsyncEventArgs e)
+    {
+        foreach (var id in pending.Keys.ToArray())
+        {
+            if (pending.TryRemove(id, out var tcs))
+                tcs.TrySetException(new TransportReconnectedException(id));
+        }
+        logger.LogWarning("RabbitMQ topology recovered. Pending RPC requests aborted.");
         return Task.CompletedTask;
     }
 
