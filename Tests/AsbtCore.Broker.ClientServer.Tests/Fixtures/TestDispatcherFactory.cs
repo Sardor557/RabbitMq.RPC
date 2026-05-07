@@ -32,7 +32,7 @@ internal static class TestDispatcherFactory
     /// <summary>
     /// Creates a dispatcher whose registry has a method entry keyed with a bogus type name.
     /// This allows testing the type_not_found error path, where method lookup succeeds
-    /// but StableTypeName.Resolve fails for the argument's TypeName.
+    /// but TypeNameCache.Resolve fails for the argument's TypeName.
     /// </summary>
     public static (RpcRequestDispatcher Dispatcher, string BogusTypeName) CreateWithBogusArgTypeName<TInterface, TImpl>(
         string methodName)

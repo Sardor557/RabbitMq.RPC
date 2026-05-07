@@ -135,7 +135,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
         public async Task DispatchAsync_UnknownArgumentType_ReturnsTypeNotFoundError()
         {
             // Build a dispatcher whose registry has AddAsync keyed with a bogus type name,
-            // so method lookup succeeds but StableTypeName.Resolve throws for that type name.
+            // so method lookup succeeds but TypeNameCache.Resolve throws for that type name.
             var (dispatcher, bogusTypeName) = TestDispatcherFactory
                 .CreateWithBogusArgTypeName<ITestService, TestServiceImpl>(nameof(ITestService.AddAsync));
 
