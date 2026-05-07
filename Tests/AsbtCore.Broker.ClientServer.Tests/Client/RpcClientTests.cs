@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Client;
@@ -9,7 +10,6 @@ using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Exceptions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
-using Microsoft.Extensions.Options;
 using Moq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -21,7 +21,6 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
     {
         private Mock<IRpcTransport> transportMock = null!;
         private Mock<IRpcRouteResolver> routeMock = null!;
-        private IRpcSerializer serializer = null!;
         private RpcOptions options = null!;
 
         [TestInitialize]
@@ -30,7 +29,6 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
             transportMock = new Mock<IRpcTransport>();
             routeMock = new Mock<IRpcRouteResolver>();
             routeMock.Setup(x => x.Resolve(It.IsAny<Type>())).Returns("rpc.route");
-            serializer = new JsonRpcSerializer();
             options = new RpcOptions
             {
                 HostName = "x", VirtualHost = "/", UserName = "u", Password = "p",
@@ -39,10 +37,17 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
         }
 
         private RpcClient CreateSut()
-            => new(transportMock.Object, routeMock.Object, serializer, MsOptions.Create(options));
+            => new(transportMock.Object, routeMock.Object, new JsonRpcSerializer(), MsOptions.Create(options));
 
         private static MethodInfo Method(string name)
             => typeof(ITestService).GetMethod(name)!;
+
+        private static System.Text.Json.JsonElement? PackResult(object? value, Type type)
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(value, type, RpcJson.Options);
+            using var doc = JsonDocument.Parse(bytes);
+            return doc.RootElement.Clone();
+        }
 
         [TestMethod]
         public async Task Invoke_TaskOfT_ReturnsDeserializedResult()
@@ -53,7 +58,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
                 {
                     RequestId = "r",
                     Success = true,
-                    Result = serializer.PackResult(42, typeof(int))
+                    Result = PackResult(42, typeof(int))
                 });
 
             var sut = CreateSut();
@@ -150,7 +155,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
             transportMock
                 .Setup(x => x.SendAsync(It.IsAny<RpcRequest>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
                 .Callback<RpcRequest, string, TimeSpan?, CancellationToken>((_, _, t, _) => captured = t)
-                .ReturnsAsync(new RpcResponse { RequestId = "r", Success = true, Result = serializer.PackResult(0, typeof(int)) });
+                .ReturnsAsync(new RpcResponse { RequestId = "r", Success = true, Result = PackResult(0, typeof(int)) });
 
             var sut = CreateSut();
             var task = (Task<int>)sut.GetType()

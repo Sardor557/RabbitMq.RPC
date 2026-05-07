@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Client;
@@ -7,7 +8,6 @@ using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
-using Microsoft.Extensions.Options;
 using Moq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -26,13 +26,17 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
 
             var serializer = new JsonRpcSerializer();
 
+            var resultBytes = JsonSerializer.SerializeToUtf8Bytes(10, typeof(int), RpcJson.Options);
+            using var resultDoc = JsonDocument.Parse(resultBytes);
+            var packedResult = resultDoc.RootElement.Clone();
+
             transport
                 .Setup(x => x.SendAsync(It.IsAny<RpcRequest>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new RpcResponse
                 {
                     RequestId = "r",
                     Success = true,
-                    Result = serializer.PackResult(10, typeof(int))
+                    Result = packedResult
                 });
 
             var client = new RpcClient(

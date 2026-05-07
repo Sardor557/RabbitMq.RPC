@@ -1,7 +1,7 @@
 using AsbtCore.Broker.Core;
-using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
+using System.Text.Json;
 
 namespace AsbtCore.Broker.Server
 {
@@ -9,16 +9,13 @@ namespace AsbtCore.Broker.Server
     {
         private readonly RpcServerRegistry registry;
         private readonly IServiceScopeFactory scopeFactory;
-        private readonly IRpcSerializer serializer;
 
         public RpcRequestDispatcher(
             RpcServerRegistry registry,
-            IServiceScopeFactory scopeFactory,
-            IRpcSerializer serializer)
+            IServiceScopeFactory scopeFactory)
         {
             this.registry = registry;
             this.scopeFactory = scopeFactory;
-            this.serializer = serializer;
         }
 
         public async Task<RpcResponse> DispatchAsync(RpcRequest request, CancellationToken cancellationToken = default)
@@ -49,7 +46,11 @@ namespace AsbtCore.Broker.Server
                 var service = scope.ServiceProvider.GetRequiredService(descriptor.ImplementationType);
 
                 var args = request.Arguments
-                    .Select(serializer.UnpackArgument)
+                    .Select(a =>
+                    {
+                        var type = Type.GetType(a.TypeName, throwOnError: true)!;
+                        return a.Payload.Deserialize(type, RpcJson.Options);
+                    })
                     .ToArray();
 
                 var result = await InvokeMethodAsync(service, method, args);
@@ -62,7 +63,7 @@ namespace AsbtCore.Broker.Server
                     ResultTypeName = logicalResultType?.AssemblyQualifiedName ?? logicalResultType?.FullName,
                     Result = logicalResultType is null
                         ? null
-                        : serializer.PackResult(result, logicalResultType)
+                        : PackResult(result, logicalResultType)
                 };
             }
             catch (TargetInvocationException ex)
@@ -94,6 +95,13 @@ namespace AsbtCore.Broker.Server
             }
 
             return result;
+        }
+
+        private static JsonElement? PackResult(object? value, Type resultType)
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(value, resultType, RpcJson.Options);
+            using var doc = JsonDocument.Parse(bytes);
+            return doc.RootElement.Clone();
         }
 
         private static Type? GetLogicalResultType(Type returnType)
