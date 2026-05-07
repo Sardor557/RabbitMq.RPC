@@ -1,9 +1,9 @@
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -14,11 +14,6 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
     [TestClass]
     public class RpcRequestDispatcherTests
     {
-        private IRpcSerializer serializer = null!;
-
-        [TestInitialize]
-        public void Init() => serializer = new JsonRpcSerializer();
-
         private (RpcRequestDispatcher sut, ServiceProvider sp) BuildSut<TImpl>() where TImpl : class, ITestService
         {
             var routeMock = new Mock<IRpcRouteResolver>();
@@ -34,10 +29,17 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
 
             var dispatcher = new RpcRequestDispatcher(
                 registry,
-                sp.GetRequiredService<IServiceScopeFactory>(),
-                serializer);
+                sp.GetRequiredService<IServiceScopeFactory>());
 
             return (dispatcher, sp);
+        }
+
+        private static RpcArgument Pack<T>(T value)
+        {
+            var type = typeof(T);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(value, type, RpcJson.Options);
+            using var doc = JsonDocument.Parse(bytes);
+            return new RpcArgument { TypeName = type.AssemblyQualifiedName!, Payload = doc.RootElement.Clone() };
         }
 
         private RpcRequest BuildAddRequest(int a, int b) => new()
@@ -46,8 +48,8 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
             MethodName = nameof(ITestService.AddAsync),
             Arguments =
             {
-                serializer.PackArgument(typeof(int), a),
-                serializer.PackArgument(typeof(int), b)
+                Pack(a),
+                Pack(b)
             }
         };
 
@@ -61,7 +63,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
 
             Assert.IsTrue(response.Success);
             Assert.IsNull(response.Error);
-            Assert.AreEqual(5, serializer.UnpackResult<int>(response.Result));
+            Assert.AreEqual(5, response.Result!.Value.Deserialize<int>(RpcJson.Options));
         }
 
         [TestMethod]
@@ -121,7 +123,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
             {
                 InterfaceName = typeof(ITestService).FullName!,
                 MethodName = nameof(ITestService.NotifyAsync),
-                Arguments = { serializer.PackArgument(typeof(string), "hi") }
+                Arguments = { Pack("hi") }
             });
 
             Assert.IsTrue(response.Success);

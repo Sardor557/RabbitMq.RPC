@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -34,8 +33,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
 
             return new RpcRequestDispatcher(
                 registry,
-                sp.GetRequiredService<IServiceScopeFactory>(),
-                new JsonRpcSerializer());
+                sp.GetRequiredService<IServiceScopeFactory>());
         }
 
         [TestMethod]

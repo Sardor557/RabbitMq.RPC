@@ -24,51 +24,7 @@ namespace AsbtCore.Broker.Core.Serialization
         public byte[] Serialize<T>(T value)
             => JsonSerializer.SerializeToUtf8Bytes(value, options);
 
-        public byte[] Serialize(object? value, Type type)
-            => JsonSerializer.SerializeToUtf8Bytes(value, type, options);
-
         public T? Deserialize<T>(ReadOnlyMemory<byte> payload)
             => JsonSerializer.Deserialize<T>(payload.Span, options);
-
-        public object? Deserialize(ReadOnlyMemory<byte> payload, Type type)
-            => JsonSerializer.Deserialize(payload.Span, type, options);
-
-        public RpcArgument PackArgument(Type type, object? value)
-        {
-            var typeName = type.AssemblyQualifiedName
-                           ?? type.FullName
-                           ?? throw new InvalidOperationException($"Cannot resolve type name for {type}.");
-
-            // value → JsonElement через UTF-8 bytes (без string-хопа)
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(value, type, options);
-            using var doc = JsonDocument.Parse(bytes);
-
-            return new RpcArgument
-            {
-                TypeName = typeName,
-                Payload = doc.RootElement.Clone()
-            };
-        }
-
-        public object? UnpackArgument(RpcArgument argument)
-        {
-            var type = Type.GetType(argument.TypeName, throwOnError: true)!;
-            return argument.Payload.Deserialize(type, options);
-        }
-
-        public JsonElement? PackResult(object? value, Type resultType)
-        {
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(value, resultType, options);
-            using var doc = JsonDocument.Parse(bytes);
-            return doc.RootElement.Clone();
-        }
-
-        public T? UnpackResult<T>(JsonElement? element)
-        {
-            if (element is null || element.Value.ValueKind == JsonValueKind.Undefined)
-                return default;
-
-            return element.Value.Deserialize<T>(options);
-        }
     }
 }
