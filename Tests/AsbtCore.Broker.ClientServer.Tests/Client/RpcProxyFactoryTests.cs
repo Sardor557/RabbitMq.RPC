@@ -39,15 +39,14 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
                     Result = packedResult
                 });
 
-            var client = new RpcClient(
-                transport.Object, route.Object, serializer,
-                MsOptions.Create(new RpcOptions
-                {
-                    HostName = "x", VirtualHost = "/", UserName = "u", Password = "p",
-                    ClientProvidedName = "c", Port = 5672
-                }));
+            var options = MsOptions.Create(new RpcOptions
+            {
+                HostName = "x", VirtualHost = "/", UserName = "u", Password = "p",
+                ClientProvidedName = "c", Port = 5672
+            });
 
-            var factory = new RpcProxyFactory(client);
+            var client = new RpcClient(transport.Object, route.Object, serializer, options);
+            var factory = new RpcProxyFactory(client, options);
 
             var proxy = factory.CreateProxy<ITestService>();
             var result = await proxy.AddAsync(3, 4);
@@ -59,6 +58,28 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
                 "rpc.route",
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [TestMethod]
+        public async Task CreateProxy_UsesDefaultTimeoutSecondsFromOptions()
+        {
+            var transportSpy = new TimeoutCapturingTransport();
+            var route = new Mock<IRpcRouteResolver>();
+            route.Setup(x => x.Resolve(It.IsAny<Type>())).Returns("rpc.route");
+
+            var options = MsOptions.Create(new RpcOptions
+            {
+                HostName = "h", VirtualHost = "/", UserName = "u", Password = "p",
+                ClientProvidedName = "c", Port = 1, DefaultTimeoutSeconds = 7
+            });
+
+            var client = new RpcClient(transportSpy, route.Object, new JsonRpcSerializer(), options);
+            var factory = new RpcProxyFactory(client, options);
+
+            var proxy = factory.CreateProxy<ITestService>();
+            await proxy.NotifyAsync("ping");
+
+            Assert.AreEqual(TimeSpan.FromSeconds(7), transportSpy.LastTimeout);
         }
     }
 }
