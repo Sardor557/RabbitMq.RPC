@@ -1,31 +1,28 @@
 using AsbtCore.Broker.Core.Exceptions;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace AsbtCore.Broker.Core.Tests.Exceptions
+namespace AsbtCore.Broker.Core.Tests.Exceptions;
+
+public class RpcRemoteExceptionTests
 {
-    [TestClass]
-    public class RpcRemoteExceptionTests
+    [Test]
+    public async Task Ctor_AllFields_ArePopulated()
     {
-        [TestMethod]
-        public void Ctor_AllFields_ArePopulated()
-        {
-            var ex = new RpcRemoteException("msg", "CODE", "System.Exception", "details");
+        var ex = new RpcRemoteException("msg", "CODE", "System.Exception", "details");
 
-            Assert.AreEqual("msg", ex.Message);
-            Assert.AreEqual("CODE", ex.RemoteCode);
-            Assert.AreEqual("System.Exception", ex.RemoteExceptionType);
-            Assert.AreEqual("details", ex.RemoteDetails);
-        }
+        await Assert.That(ex.Message).IsEqualTo("msg");
+        await Assert.That(ex.RemoteCode).IsEqualTo("CODE");
+        await Assert.That(ex.RemoteExceptionType).IsEqualTo("System.Exception");
+        await Assert.That(ex.RemoteDetails).IsEqualTo("details");
+    }
 
-        [TestMethod]
-        public void Ctor_OptionalArgsOmitted_DoesNotThrow()
-        {
-            var ex = new RpcRemoteException("msg");
+    [Test]
+    public async Task Ctor_OptionalArgsOmitted_DoesNotThrow()
+    {
+        var ex = new RpcRemoteException("msg");
 
-            Assert.AreEqual("msg", ex.Message);
-            Assert.IsNull(ex.RemoteCode);
-            Assert.IsNull(ex.RemoteExceptionType);
-            Assert.IsNull(ex.RemoteDetails);
-        }
+        await Assert.That(ex.Message).IsEqualTo("msg");
+        await Assert.That(ex.RemoteCode).IsNull();
+        await Assert.That(ex.RemoteExceptionType).IsNull();
+        await Assert.That(ex.RemoteDetails).IsNull();
     }
 }

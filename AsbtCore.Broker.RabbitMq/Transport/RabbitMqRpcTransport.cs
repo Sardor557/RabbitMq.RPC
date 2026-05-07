@@ -123,39 +123,57 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
                 publisherConfirmationsEnabled: true,
                 publisherConfirmationTrackingEnabled: true);
 
-            publishChannel = await connection.CreateChannelAsync(
-                options: publishChannelOptions,
-                cancellationToken: cancellationToken);
-            replyChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+            try
+            {
+                publishChannel = await connection.CreateChannelAsync(
+                    options: publishChannelOptions,
+                    cancellationToken: cancellationToken);
+                replyChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
-            var queueName = $"rpc-reply-{this.options.ClientProvidedName}-{Guid.NewGuid():N}";
-            await replyChannel.QueueDeclareAsync(
-                queue: queueName,
-                durable: false,
-                exclusive: false,
-                autoDelete: true,
-                arguments: null,
-                passive: false,
-                noWait: false,
-                cancellationToken: cancellationToken);
+                var queueName = $"rpc-reply-{this.options.ClientProvidedName}-{Guid.NewGuid():N}";
+                await replyChannel.QueueDeclareAsync(
+                    queue: queueName,
+                    durable: false,
+                    exclusive: false,
+                    autoDelete: true,
+                    arguments: null,
+                    passive: false,
+                    noWait: false,
+                    cancellationToken: cancellationToken);
 
-            replyQueueName = queueName;
+                replyQueueName = queueName;
 
-            if (replyChannel is IRecoverable recoverable)
-                recoverable.RecoveryAsync += OnRecoverySucceededAsync;
+                if (replyChannel is IRecoverable recoverable)
+                    recoverable.RecoveryAsync += OnRecoverySucceededAsync;
 
-            var consumer = new AsyncEventingBasicConsumer(replyChannel);
-            consumer.ReceivedAsync += OnResponseReceivedAsync;
+                var consumer = new AsyncEventingBasicConsumer(replyChannel);
+                consumer.ReceivedAsync += OnResponseReceivedAsync;
 
-            await replyChannel.BasicConsumeAsync(
-                queue: replyQueueName,
-                autoAck: true,
-                consumer: consumer,
-                cancellationToken: cancellationToken);
+                await replyChannel.BasicConsumeAsync(
+                    queue: replyQueueName,
+                    autoAck: true,
+                    consumer: consumer,
+                    cancellationToken: cancellationToken);
 
-            initialized = true;
+                initialized = true;
 
-            logger.LogInformation("RabbitMQ RPC transport initialized. Reply queue: {ReplyQueue}", replyQueueName);
+                logger.LogInformation("RabbitMQ RPC transport initialized. Reply queue: {ReplyQueue}", replyQueueName);
+            }
+            catch
+            {
+                if (publishChannel is not null)
+                {
+                    await publishChannel.DisposeAsync();
+                    publishChannel = null;
+                }
+                if (replyChannel is not null)
+                {
+                    await replyChannel.DisposeAsync();
+                    replyChannel = null;
+                }
+                replyQueueName = null;
+                throw;
+            }
         }
         finally
         {

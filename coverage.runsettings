@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0">
+        <Configuration>
+          <CodeCoverage>
+            <ModulePaths>
+              <Include>
+                <ModulePath>.*AsbtCore\.Broker\.Core\.dll$</ModulePath>
+                <ModulePath>.*AsbtCore\.Broker\.Client\.dll$</ModulePath>
+                <ModulePath>.*AsbtCore\.Broker\.Server\.dll$</ModulePath>
+                <ModulePath>.*AsbtCore\.Broker\.RabbitMq\.dll$</ModulePath>
+              </Include>
+              <Exclude>
+                <ModulePath>.*Tests.*</ModulePath>
+              </Exclude>
+            </ModulePaths>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

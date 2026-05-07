@@ -1,11 +1,9 @@
 using System;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Server;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace AsbtCore.Broker.ClientServer.Tests.Server;
 
-[TestClass]
 public sealed class RpcServerMethodInvokerTests
 {
     public sealed class Sample
@@ -26,7 +24,7 @@ public sealed class RpcServerMethodInvokerTests
             => throw new InvalidOperationException("boom");
     }
 
-    [TestMethod]
+    [Test]
     public async Task Build_SyncMethod_InvokesAndReturnsResult()
     {
         var method = typeof(Sample).GetMethod(nameof(Sample.Add))!;
@@ -34,10 +32,10 @@ public sealed class RpcServerMethodInvokerTests
 
         var result = await invoker(new Sample(), new object?[] { 3, 4 });
 
-        Assert.AreEqual(7, result);
+        await Assert.That(result).IsEqualTo(7);
     }
 
-    [TestMethod]
+    [Test]
     public async Task Build_TaskMethod_ReturnsNull()
     {
         var method = typeof(Sample).GetMethod(nameof(Sample.PingAsync))!;
@@ -45,10 +43,10 @@ public sealed class RpcServerMethodInvokerTests
 
         var result = await invoker(new Sample(), Array.Empty<object?>());
 
-        Assert.IsNull(result);
+        await Assert.That(result).IsNull();
     }
 
-    [TestMethod]
+    [Test]
     public async Task Build_TaskOfTMethod_ReturnsValue()
     {
         var method = typeof(Sample).GetMethod(nameof(Sample.SumAsync))!;
@@ -56,10 +54,10 @@ public sealed class RpcServerMethodInvokerTests
 
         var result = await invoker(new Sample(), new object?[] { 10, 20 });
 
-        Assert.AreEqual(30, result);
+        await Assert.That(result).IsEqualTo(30);
     }
 
-    [TestMethod]
+    [Test]
     public async Task Build_AsyncTaskOfT_ReturnsValue()
     {
         var method = typeof(Sample).GetMethod(nameof(Sample.EchoAsync))!;
@@ -67,16 +65,16 @@ public sealed class RpcServerMethodInvokerTests
 
         var result = await invoker(new Sample(), new object?[] { "hi" });
 
-        Assert.AreEqual("hi", result);
+        await Assert.That(result).IsEqualTo("hi");
     }
 
-    [TestMethod]
+    [Test]
     public async Task Build_ThrowingMethod_PropagatesException()
     {
         var method = typeof(Sample).GetMethod(nameof(Sample.ThrowAsync))!;
         var invoker = RpcServerMethodInvoker.Build(method);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await invoker(new Sample(), Array.Empty<object?>()));
     }
 }
