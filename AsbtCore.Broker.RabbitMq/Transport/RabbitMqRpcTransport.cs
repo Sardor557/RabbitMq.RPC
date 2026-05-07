@@ -74,19 +74,29 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
 
         try
         {
-            await publishChannel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: route,
-                mandatory: false,
-                basicProperties: properties,
-                body: body,
-                cancellationToken: linkedCts.Token);
+            try
+            {
+                await publishChannel.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: route,
+                    mandatory: false,
+                    basicProperties: properties,
+                    body: body,
+                    cancellationToken: linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                pending.TryRemove(request.RequestId, out _);
+                throw new RpcPublishFailedException(request.RequestId, ex.GetType().Name, ex);
+            }
 
             logger.LogDebug(
                 "RPC request published. RequestId: {RequestId}, Route: {Route}, Method: {Method}",
-                request.RequestId,
-                route,
-                request.MethodName);
+                request.RequestId, route, request.MethodName);
 
             return await tcs.Task;
         }
