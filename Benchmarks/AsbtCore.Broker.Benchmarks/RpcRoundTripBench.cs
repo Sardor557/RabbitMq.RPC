@@ -25,7 +25,6 @@ public sealed class BenchService : IBenchService
 }
 
 [MemoryDiagnoser]
-[ThreadingDiagnoser]
 public class RpcRoundTripBench
 {
     private IBenchService proxy = null!;

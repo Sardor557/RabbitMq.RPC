@@ -3,7 +3,6 @@ using BenchmarkDotNet.Attributes;
 namespace AsbtCore.Broker.Benchmarks;
 
 [MemoryDiagnoser]
-[ThreadingDiagnoser]
 public class PublishConcurrencyBench
 {
     private SemaphoreSlim semaphore = null!;
