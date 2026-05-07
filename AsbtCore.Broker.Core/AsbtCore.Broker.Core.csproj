@@ -20,6 +20,7 @@
     <InternalsVisibleTo Include="AsbtCore.Broker.Client" />
     <InternalsVisibleTo Include="AsbtCore.Broker.Server" />
     <InternalsVisibleTo Include="AsbtCore.Broker.RabbitMq" />
+    <InternalsVisibleTo Include="AsbtCore.Broker.Benchmarks" />
   </ItemGroup>
 
 </Project>
