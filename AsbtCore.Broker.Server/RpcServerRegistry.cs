@@ -1,5 +1,6 @@
 using System.Reflection;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Serialization;
 
 namespace AsbtCore.Broker.Server;
 
@@ -52,9 +53,7 @@ public sealed class RpcServerRegistry
 
             var parameterTypeNames = interfaceMethod
                 .GetParameters()
-                .Select(p => p.ParameterType.AssemblyQualifiedName
-                             ?? p.ParameterType.FullName
-                             ?? throw new InvalidOperationException($"Cannot get type name for {p.ParameterType}."))
+                .Select(p => StableTypeName.From(p.ParameterType))
                 .ToArray();
 
             var key = RpcServerDescriptor.BuildMethodKey(interfaceMethod.Name, parameterTypeNames);
