@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Exceptions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.Logging;
@@ -124,6 +125,9 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
 
             replyQueueName = queueName;
 
+            if (replyChannel is IRecoverable recoverable)
+                recoverable.RecoveryAsync += OnRecoverySucceededAsync;
+
             var consumer = new AsyncEventingBasicConsumer(replyChannel);
             consumer.ReceivedAsync += OnResponseReceivedAsync;
 
@@ -165,6 +169,17 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
             logger.LogError(ex, "Error while handling RPC response.");
         }
 
+        return Task.CompletedTask;
+    }
+
+    private Task OnRecoverySucceededAsync(object? sender, AsyncEventArgs e)
+    {
+        foreach (var id in pending.Keys.ToArray())
+        {
+            if (pending.TryRemove(id, out var tcs))
+                tcs.TrySetException(new TransportReconnectedException(id));
+        }
+        logger.LogWarning("RabbitMQ topology recovered. Pending RPC requests aborted.");
         return Task.CompletedTask;
     }
 
