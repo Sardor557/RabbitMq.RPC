@@ -48,6 +48,10 @@
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<InternalsVisibleTo Include="AsbtCore.Broker.ClientServer.Tests" />
+	</ItemGroup>
+
 	<Target Name="IncludeReferencedProjectsInPackage">
 		<ItemGroup>
 			<BuildOutputInPackage Include="$(OutputPath)AsbtCore.Broker.Core.dll" />
