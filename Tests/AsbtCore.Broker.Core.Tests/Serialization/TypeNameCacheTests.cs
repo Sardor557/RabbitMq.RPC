@@ -6,14 +6,14 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace AsbtCore.Broker.Core.Tests.Serialization;
 
 [TestClass]
-public sealed class TypeNameCacheTests
+public sealed class StableTypeNameTests
 {
     [TestMethod]
     public void Resolve_KnownType_ReturnsType()
     {
-        var aqn = typeof(int).AssemblyQualifiedName!;
+        var name = StableTypeName.From(typeof(int));
 
-        var resolved = TypeNameCache.Resolve(aqn);
+        var resolved = StableTypeName.Resolve(name);
 
         Assert.AreEqual(typeof(int), resolved);
     }
@@ -21,10 +21,10 @@ public sealed class TypeNameCacheTests
     [TestMethod]
     public void Resolve_SameNameTwice_ReturnsSameInstance()
     {
-        var aqn = typeof(string).AssemblyQualifiedName!;
+        var name = StableTypeName.From(typeof(string));
 
-        var first = TypeNameCache.Resolve(aqn);
-        var second = TypeNameCache.Resolve(aqn);
+        var first = StableTypeName.Resolve(name);
+        var second = StableTypeName.Resolve(name);
 
         Assert.AreSame(first, second);
     }
@@ -32,20 +32,20 @@ public sealed class TypeNameCacheTests
     [TestMethod]
     public void Resolve_UnknownType_Throws()
     {
-        var assemblyName = typeof(TypeNameCacheTests).Assembly.GetName().Name;
+        var assemblyName = typeof(StableTypeNameTests).Assembly.GetName().Name;
 
         Assert.ThrowsException<TypeLoadException>(
-            () => TypeNameCache.Resolve($"Some.Nonexistent.Type, {assemblyName}"));
+            () => StableTypeName.Resolve($"Some.Nonexistent.Type, {assemblyName}"));
     }
 
     [TestMethod]
     public void Resolve_ConcurrentCalls_ResolveCorrectly()
     {
-        var aqn = typeof(Guid).AssemblyQualifiedName!;
+        var name = StableTypeName.From(typeof(Guid));
 
         Parallel.For(0, 1000, _ =>
         {
-            var t = TypeNameCache.Resolve(aqn);
+            var t = StableTypeName.Resolve(name);
             Assert.AreEqual(typeof(Guid), t);
         });
     }

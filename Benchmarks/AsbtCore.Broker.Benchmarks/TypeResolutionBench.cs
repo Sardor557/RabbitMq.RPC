@@ -6,7 +6,7 @@ namespace AsbtCore.Broker.Benchmarks;
 [MemoryDiagnoser]
 public class TypeResolutionBench
 {
-    private string aqn = null!;
+    private string stableName = null!;
 
     [Params(1, 10, 1000)]
     public int Calls { get; set; }
@@ -15,7 +15,7 @@ public class TypeResolutionBench
     public LegacyOrNew Mode { get; set; }
 
     [GlobalSetup]
-    public void Setup() => aqn = typeof(Guid).AssemblyQualifiedName!;
+    public void Setup() => stableName = StableTypeName.From(typeof(Guid));
 
     [Benchmark]
     public Type Resolve()
@@ -25,8 +25,8 @@ public class TypeResolutionBench
         {
             t = Mode switch
             {
-                LegacyOrNew.Legacy => Type.GetType(aqn, throwOnError: true)!,
-                LegacyOrNew.New => TypeNameCache.Resolve(aqn),
+                LegacyOrNew.Legacy => Type.GetType(StableTypeName.From(typeof(Guid)), throwOnError: true)!,
+                LegacyOrNew.New => StableTypeName.Resolve(stableName),
                 _ => throw new InvalidOperationException()
             };
         }
