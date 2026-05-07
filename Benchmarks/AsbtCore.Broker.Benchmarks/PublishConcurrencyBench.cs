@@ -1,11 +1,9 @@
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 
 namespace AsbtCore.Broker.Benchmarks;
 
 [MemoryDiagnoser]
 [ThreadingDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
 public class PublishConcurrencyBench
 {
     private SemaphoreSlim semaphore = null!;

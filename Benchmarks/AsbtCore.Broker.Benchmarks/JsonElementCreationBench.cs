@@ -1,13 +1,11 @@
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 
 namespace AsbtCore.Broker.Benchmarks;
 
 public enum LegacyOrNew { Legacy, New }
 
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
 public class JsonElementCreationBench
 {
     public sealed record Small(int Id, string Name);

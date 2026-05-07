@@ -1,12 +1,10 @@
 using System.Reflection;
 using AsbtCore.Broker.Server;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 
 namespace AsbtCore.Broker.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
 public class RpcServerInvokerBench
 {
     public sealed class Sample

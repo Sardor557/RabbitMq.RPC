@@ -4,7 +4,6 @@ using AsbtCore.Broker.Core.Routing;
 using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -28,7 +27,6 @@ public sealed class BenchService : IBenchService
 
 [MemoryDiagnoser]
 [ThreadingDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
 public class RpcRoundTripBench
 {
     private IBenchService proxy = null!;

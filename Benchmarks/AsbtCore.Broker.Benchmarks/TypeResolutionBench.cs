@@ -1,11 +1,9 @@
 using AsbtCore.Broker.Core.Serialization;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 
 namespace AsbtCore.Broker.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
 public class TypeResolutionBench
 {
     private string aqn = null!;
