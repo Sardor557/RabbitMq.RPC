@@ -40,15 +40,22 @@ namespace AsbtCore.Broker.Demo.Client
 
             while (true)
             {
-                Console.WriteLine("Enter two numbers to sum (or 'exit' to quit):");                
+                Console.WriteLine("Enter two numbers to sum (or 'exit' to quit):");
 
                 var a = Console.ReadLine();
                 var b = Console.ReadLine();
 
-                if (a?.Trim().ToLower() == "exit" || b.Trim().ToLower() == "exit")
+                if (string.Equals(a?.Trim(), "exit", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(b?.Trim(), "exit", StringComparison.OrdinalIgnoreCase))
                     break;
 
-                var sum = await userService.SumAsync(Convert.ToInt32(a), Convert.ToInt32(b));
+                if (!int.TryParse(a, out var ai) || !int.TryParse(b, out var bi))
+                {
+                    Console.WriteLine("Invalid input — please enter integers.");
+                    continue;
+                }
+
+                var sum = await userService.SumAsync(ai, bi);
                 Console.WriteLine($"Sum = {sum}");
             }
         }
