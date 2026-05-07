@@ -104,9 +104,7 @@ public sealed class RpcClient
                     $"Method '{method.Name}' contains CancellationToken parameter. Use timeout on transport/client level.");
             }
 
-            var typeName = parameterType.AssemblyQualifiedName
-                ?? parameterType.FullName
-                ?? throw new InvalidOperationException($"Cannot resolve type name for {parameterType}.");
+            var typeName = StableTypeName.From(parameterType);
 
             request.Arguments.Add(new RpcArgument
             {
