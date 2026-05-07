@@ -1,47 +1,50 @@
-﻿using System.Reflection;
+using System.Reflection;
+using AsbtCore.Broker.Core.Options;
+using Microsoft.Extensions.Options;
 
-namespace AsbtCore.Broker.Client
+namespace AsbtCore.Broker.Client;
+
+public sealed class RpcProxyFactory
 {
-    public class RpcProxyFactory
+    private readonly RpcClient client;
+    private readonly TimeSpan defaultTimeout;
+
+    public RpcProxyFactory(RpcClient client, IOptions<RpcOptions> options)
     {
-        private readonly RpcClient client;
-
-        public RpcProxyFactory(RpcClient client)
-        {
-            this.client = client;
-        }
-
-        public T CreateProxy<T>()
-            where T : class
-        {
-            var proxy = DispatchProxy.Create<T, RpcDispatchProxy>();
-
-            if (proxy is not RpcDispatchProxy dispatchProxy)
-                throw new InvalidOperationException("Failed to create DispatchProxy.");
-
-            dispatchProxy.Configure(client, typeof(T));
-            return (T)(object)dispatchProxy;
-        }
+        this.client = client;
+        this.defaultTimeout = TimeSpan.FromSeconds(options.Value.DefaultTimeoutSeconds);
     }
 
-    internal class RpcDispatchProxy : DispatchProxy
+    public T CreateProxy<T>() where T : class
     {
-        private RpcClient client = default!;
-        private Type interfaceType = default!;
-        private TimeSpan? timeout = TimeSpan.FromSeconds(10);
+        var proxy = DispatchProxy.Create<T, RpcDispatchProxy>();
 
-        public void Configure(RpcClient client, Type interfaceType)
-        {
-            this.client = client;
-            this.interfaceType = interfaceType;
-        }
+        if (proxy is not RpcDispatchProxy dispatchProxy)
+            throw new InvalidOperationException("Failed to create DispatchProxy.");
 
-        protected override object Invoke(MethodInfo targetMethod, object[] args)
-        {
-            if (targetMethod is null)
-                throw new ArgumentNullException(nameof(targetMethod));
+        dispatchProxy.Configure(client, typeof(T), defaultTimeout);
+        return (T)(object)dispatchProxy;
+    }
+}
 
-            return client.InvokeProxy(interfaceType, targetMethod, args, timeout);
-        }
+internal class RpcDispatchProxy : DispatchProxy
+{
+    private RpcClient client = default!;
+    private Type interfaceType = default!;
+    private TimeSpan timeout;
+
+    public void Configure(RpcClient client, Type interfaceType, TimeSpan timeout)
+    {
+        this.client = client;
+        this.interfaceType = interfaceType;
+        this.timeout = timeout;
+    }
+
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+    {
+        if (targetMethod is null)
+            throw new ArgumentNullException(nameof(targetMethod));
+
+        return client.InvokeProxy(interfaceType, targetMethod, args ?? Array.Empty<object>()!, timeout);
     }
 }

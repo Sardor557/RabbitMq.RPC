@@ -1,15 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>disable</Nullable>
+    <Nullable>enable</Nullable>
 
     <PackageId>RabbitRpc.Server</PackageId>
     <Title>RabbitRpc.Server</Title>
     <Description>Server-side RabbitMQ RPC package with DI integration and hosted listener.</Description>
     <PackageTags>rabbitmq;rpc;dotnet;worker;di</PackageTags>
 
-    <Version>1.0.2</Version>
+    <Version>2.0.0</Version>
+    <PackageReleaseNotes>2.0.0 — Performance pass: cached compiled invokers, single-allocation JsonElement, TypeNameCache, no publishLock. Migration: net10.0; Nullable enable. Breaking: internal RpcServerDescriptor methods, RpcDispatchProxy timeout now sourced from RpcOptions.DefaultTimeoutSeconds.</PackageReleaseNotes>
     <Authors>AsbtCore</Authors>
     <Company>AsbtCore</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -33,10 +34,10 @@
 
   <ItemGroup>
     <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,6 +47,15 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>AsbtCore.Broker.ClientServer.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>AsbtCore.Broker.Benchmarks</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <Target Name="IncludeReferencedProjectsInPackage">

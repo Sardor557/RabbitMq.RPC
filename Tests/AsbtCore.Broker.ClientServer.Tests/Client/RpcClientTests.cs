@@ -37,7 +37,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
         }
 
         private RpcClient CreateSut()
-            => new(transportMock.Object, routeMock.Object, new JsonRpcSerializer(), MsOptions.Create(options));
+            => new(transportMock.Object, routeMock.Object, MsOptions.Create(options));
 
         private static MethodInfo Method(string name)
             => typeof(ITestService).GetMethod(name)!;
