@@ -43,7 +43,13 @@ namespace AsbtCore.Broker.RabbitMq.Transport
 
             foreach (var route in routes)
             {
-                var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+                var channelOptions = new CreateChannelOptions(
+                    publisherConfirmationsEnabled: true,
+                    publisherConfirmationTrackingEnabled: true);
+
+                var channel = await connection.CreateChannelAsync(
+                    options: channelOptions,
+                    cancellationToken: cancellationToken);
 
                 await channel.QueueDeclareAsync(
                     queue: route,
