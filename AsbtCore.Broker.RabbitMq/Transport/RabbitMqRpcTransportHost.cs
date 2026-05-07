@@ -1,5 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
@@ -18,7 +20,13 @@ namespace AsbtCore.Broker.RabbitMq.Transport
         private readonly ILogger<RabbitMqRpcTransportHost> logger;
         private readonly IRpcSerializer serializer;
 
-        private readonly List<IChannel> channels = new();
+        private readonly List<(IChannel Channel, string ConsumerTag)> consumers = new();
+        private readonly object stateLock = new();
+
+        private int inFlightCount;
+        private volatile bool stopping;
+        private TaskCompletionSource? drained;
+
         private bool started;
 
         public RabbitMqRpcTransportHost(
@@ -43,11 +51,14 @@ namespace AsbtCore.Broker.RabbitMq.Transport
 
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
 
+            var dispatchConcurrency = options.ConsumerDispatchConcurrency ?? options.PrefetchCount;
+
             foreach (var route in routes)
             {
                 var channelOptions = new CreateChannelOptions(
                     publisherConfirmationsEnabled: true,
-                    publisherConfirmationTrackingEnabled: true);
+                    publisherConfirmationTrackingEnabled: true,
+                    consumerDispatchConcurrency: dispatchConcurrency);
 
                 var channel = await connection.CreateChannelAsync(
                     options: channelOptions,
@@ -89,18 +100,67 @@ namespace AsbtCore.Broker.RabbitMq.Transport
                     await HandleIncomingAsync(channel, ea, handler, capturedRoute, capturedDeadRoute, cancellationToken);
                 };
 
-                await channel.BasicConsumeAsync(
+                var consumerTag = await channel.BasicConsumeAsync(
                     queue: route,
                     autoAck: false,
                     consumer: consumer,
                     cancellationToken: cancellationToken);
 
-                channels.Add(channel);
+                consumers.Add((channel, consumerTag));
 
                 logger.LogInformation("RPC route is listening: {Route}", route);
             }
 
             started = true;
+        }
+
+        public async Task StopAsync(CancellationToken cancellationToken = default)
+        {
+            if (!started)
+                return;
+
+            lock (stateLock)
+            {
+                stopping = true;
+                if (inFlightCount > 0 && drained is null)
+                {
+                    drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+            }
+
+            foreach (var (channel, consumerTag) in consumers)
+            {
+                try
+                {
+                    await channel.BasicCancelAsync(consumerTag, noWait: false, cancellationToken: cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to cancel consumer {Tag}", consumerTag);
+                }
+            }
+
+            TaskCompletionSource? toAwait;
+            lock (stateLock)
+            {
+                toAwait = inFlightCount > 0 ? drained : null;
+            }
+
+            if (toAwait is not null)
+            {
+                try
+                {
+                    await toAwait.Task.WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    logger.LogWarning(
+                        "StopAsync cancelled before all in-flight handlers drained. Remaining: {Count}",
+                        inFlightCount);
+                }
+            }
+
+            await DisposeChannelsAsync();
         }
 
         private async Task HandleIncomingAsync(
@@ -111,108 +171,135 @@ namespace AsbtCore.Broker.RabbitMq.Transport
             string deadRoute,
             CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref inFlightCount);
             try
             {
-                var request = serializer.Deserialize<RpcRequest>(ea.Body)
-                              ?? throw new InvalidOperationException("Invalid RPC request payload.");
-
-                var response = await handler(request, cancellationToken);
-
-                var replyTo = ea.BasicProperties.ReplyTo;
-                if (!string.IsNullOrWhiteSpace(replyTo))
-                {
-                    var responseBytes = serializer.Serialize(response);
-
-                    var props = new BasicProperties
-                    {
-                        CorrelationId = ea.BasicProperties.CorrelationId,
-                        ContentType   = ea.BasicProperties.ContentType,
-                    };
-
-                    try
-                    {
-                        await channel.BasicPublishAsync(
-                            exchange: string.Empty,
-                            routingKey: replyTo,
-                            mandatory: false,
-                            basicProperties: props,
-                            body: responseBytes,
-                            cancellationToken: cancellationToken);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        logger.LogError(ex,
-                            "Failed to publish RPC reply. CorrelationId: {Id}. Original delivery acked anyway.",
-                            ea.BasicProperties.CorrelationId);
-                    }
-                }
-
-                await channel.BasicAckAsync(
-                    deliveryTag: ea.DeliveryTag,
-                    multiple: false,
-                    cancellationToken: cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Poison RPC message → DLQ {DeadRoute}", deadRoute);
-
-                var deadProps = new BasicProperties
-                {
-                    Headers = new Dictionary<string, object?>
-                    {
-                        ["x-rpc-error"]     = ex.GetType().FullName,
-                        ["x-rpc-error-msg"] = ex.Message,
-                        ["x-rpc-original"]  = route,
-                        ["x-rpc-failed-at"] = DateTimeOffset.UtcNow.ToString("o"),
-                    },
-                };
-
                 try
                 {
-                    await channel.BasicPublishAsync(
-                        exchange: string.Empty,
-                        routingKey: deadRoute,
-                        mandatory: false,
-                        basicProperties: deadProps,
-                        body: ea.Body,
-                        cancellationToken: cancellationToken);
+                    var request = serializer.Deserialize<RpcRequest>(ea.Body)
+                                  ?? throw new InvalidOperationException("Invalid RPC request payload.");
+
+                    var response = await handler(request, cancellationToken);
+
+                    var replyTo = ea.BasicProperties.ReplyTo;
+                    if (!string.IsNullOrWhiteSpace(replyTo))
+                    {
+                        var responseBytes = serializer.Serialize(response);
+
+                        var props = new BasicProperties
+                        {
+                            CorrelationId = ea.BasicProperties.CorrelationId,
+                            ContentType   = ea.BasicProperties.ContentType,
+                        };
+
+                        try
+                        {
+                            await channel.BasicPublishAsync(
+                                exchange: string.Empty,
+                                routingKey: replyTo,
+                                mandatory: false,
+                                basicProperties: props,
+                                body: responseBytes,
+                                cancellationToken: cancellationToken);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            logger.LogError(ex,
+                                "Failed to publish RPC reply. CorrelationId: {Id}. Original delivery acked anyway.",
+                                ea.BasicProperties.CorrelationId);
+                        }
+                    }
 
                     await channel.BasicAckAsync(
                         deliveryTag: ea.DeliveryTag,
                         multiple: false,
                         cancellationToken: cancellationToken);
                 }
-                catch (Exception dlqEx) when (dlqEx is not OperationCanceledException)
+                catch (OperationCanceledException)
                 {
-                    logger.LogError(dlqEx,
-                        "DLQ publish failed for {DeadRoute}; dropping original message.", deadRoute);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Poison RPC message → DLQ {DeadRoute}", deadRoute);
 
-                    await channel.BasicNackAsync(
-                        deliveryTag: ea.DeliveryTag,
-                        multiple: false,
-                        requeue: false,
-                        cancellationToken: cancellationToken);
+                    var deadProps = new BasicProperties
+                    {
+                        Headers = new Dictionary<string, object?>
+                        {
+                            ["x-rpc-error"]     = ex.GetType().FullName,
+                            ["x-rpc-error-msg"] = ex.Message,
+                            ["x-rpc-original"]  = route,
+                            ["x-rpc-failed-at"] = DateTimeOffset.UtcNow.ToString("o"),
+                        },
+                    };
+
+                    try
+                    {
+                        await channel.BasicPublishAsync(
+                            exchange: string.Empty,
+                            routingKey: deadRoute,
+                            mandatory: false,
+                            basicProperties: deadProps,
+                            body: ea.Body,
+                            cancellationToken: cancellationToken);
+
+                        await channel.BasicAckAsync(
+                            deliveryTag: ea.DeliveryTag,
+                            multiple: false,
+                            cancellationToken: cancellationToken);
+                    }
+                    catch (Exception dlqEx) when (dlqEx is not OperationCanceledException)
+                    {
+                        logger.LogError(dlqEx,
+                            "DLQ publish failed for {DeadRoute}; dropping original message.", deadRoute);
+
+                        await channel.BasicNackAsync(
+                            deliveryTag: ea.DeliveryTag,
+                            multiple: false,
+                            requeue: false,
+                            cancellationToken: cancellationToken);
+                    }
+                }
+            }
+            finally
+            {
+                if (Interlocked.Decrement(ref inFlightCount) == 0 && stopping)
+                {
+                    TaskCompletionSource? toSignal;
+                    lock (stateLock)
+                    {
+                        toSignal = drained;
+                    }
+                    toSignal?.TrySetResult();
                 }
             }
         }
 
+        private async Task DisposeChannelsAsync()
+        {
+            foreach (var (channel, _) in consumers)
+            {
+                try
+                {
+                    await channel.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error disposing channel.");
+                }
+            }
+            consumers.Clear();
+        }
+
         public async ValueTask DisposeAsync()
         {
-            foreach (var channel in channels)
-            {
-                await channel.DisposeAsync();
-            }
-
-            channels.Clear();
+            await DisposeChannelsAsync();
         }
 
         public void Dispose()
         {
-
+            DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
     }
 }

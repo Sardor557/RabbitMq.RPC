@@ -5,7 +5,7 @@ namespace AsbtCore.Broker.Core
 {
     public sealed class RpcRequest
     {
-        public string RequestId { get; set; } = Guid.NewGuid().ToString("N");
+        public string RequestId { get; set; } = default!;
         public string InterfaceName { get; set; } = default!;
         public string MethodName { get; set; } = default!;
         public List<RpcArgument> Arguments { get; set; } = new();

@@ -90,6 +90,7 @@ public sealed class RpcClient
 
         var request = new RpcRequest
         {
+            RequestId = Guid.NewGuid().ToString("N"),
             InterfaceName = interfaceName,
             MethodName = method.Name
         };

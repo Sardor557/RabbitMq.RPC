@@ -355,3 +355,13 @@ graph LR
 2. Expect new queues `*.dead` per RPC route in your broker — set TTL/max-length policies as needed.
 3. Add `catch (TransportReconnectedException)` and/or `catch (RpcPublishFailedException)` where proxy methods are awaited.
 4. Update monitoring filters that matched the old `amq.gen-*` reply-queue pattern.
+
+---
+
+## Migration v3.0 → v3.1
+
+- **Server-side message dispatch is now parallel by default.** `RpcOptions.ConsumerDispatchConcurrency` defaults to `PrefetchCount`. Existing handlers must be thread-safe. Set `RpcOptions.ConsumerDispatchConcurrency = 1` to retain the v3.0 sequential behavior.
+- `IRpcTransportHost.StopAsync(CancellationToken)` was added as a default interface method. Custom transports should override it to drain in-flight handlers before disposal.
+- `IRpcTransportHost.Dispose()` is now a sync-over-async last-resort path. Prefer `DisposeAsync()` (or let DI dispose the host).
+- `RpcRequest.RequestId` is no longer auto-initialized in the property initializer. Client code that constructs `RpcRequest` directly must set `RequestId` explicitly.
+- Poison reply handling: `OnResponseReceivedAsync` now surfaces deserialization errors to the awaiting caller instead of silently logging and waiting for the per-call timeout.

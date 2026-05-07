@@ -32,10 +32,11 @@ namespace AsbtCore.Broker.Server
             logger.LogInformation("RPC server started. Routes: {Routes}", string.Join(", ", routes));
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
             logger.LogInformation("RPC server stopping.");
-            return Task.CompletedTask;
+            await transportHost.StopAsync(cancellationToken);
+            logger.LogInformation("RPC server stopped.");
         }
     }
 }

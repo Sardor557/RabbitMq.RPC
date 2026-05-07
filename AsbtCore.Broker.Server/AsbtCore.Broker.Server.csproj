@@ -9,10 +9,13 @@
     <Description>Server-side RabbitMQ RPC package with DI integration and hosted listener.</Description>
     <PackageTags>rabbitmq;rpc;dotnet;worker;di</PackageTags>
 
-    <Version>3.0.0</Version>
-    <PackageReleaseNotes>v3.0.0 — Reliability release. Wire-format breaking change (stable type identity);
-reply queue resilience on reconnect; publisher confirms; per-route DLQ.
-v3.x is not interoperable with v2.x. See README "Migration v2 → v3".</PackageReleaseNotes>
+    <Version>3.1.0</Version>
+    <PackageReleaseNotes>v3.1.0 — Reliability + throughput patch.
+- Fix: poison reply no longer leaks pending TCS (caller fails fast).
+- Fix: graceful shutdown drains in-flight handlers and BasicCancels consumers.
+- Fix: RpcRequest.RequestId no longer auto-allocated on server deserialize.
+- Feat: ConsumerDispatchConcurrency option (defaults to PrefetchCount) — handlers must be thread-safe.
+See README "Migration v3.0 → v3.1".</PackageReleaseNotes>
     <Authors>AsbtCore</Authors>
     <Company>AsbtCore</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
