@@ -5,14 +5,14 @@ using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.Options;
 using System.Reflection;
+using System.Text.Json;
 
 namespace AsbtCore.Broker.Client
 {
     public sealed class RpcClient
     {
         private readonly IRpcTransport transport;
-        private readonly IRpcRouteResolver routeResolver;
-        private readonly IRpcSerializer serializer;
+        private readonly IRpcRouteResolver routeResolver; 
         private readonly RpcOptions options;
 
         public RpcClient(
@@ -22,8 +22,7 @@ namespace AsbtCore.Broker.Client
             IOptions<RpcOptions> options)
         {
             this.transport = transport;
-            this.routeResolver = routeResolver;
-            this.serializer = serializer;
+            this.routeResolver = routeResolver; 
             this.options = options.Value;
         }
 
@@ -95,7 +94,10 @@ namespace AsbtCore.Broker.Client
             if (!expectsResult)
                 return default;
 
-            return serializer.UnpackResult<T>(response.Result);
+            if (response.Result is null || response.Result.Value.ValueKind == JsonValueKind.Undefined)
+                return default;
+
+            return response.Result.Value.Deserialize<T>(RpcJson.Options);
         }
 
         private RpcRequest BuildRequest(Type interfaceType, MethodInfo method, object[] args)
@@ -128,7 +130,18 @@ namespace AsbtCore.Broker.Client
                         $"Method '{method.Name}' contains CancellationToken parameter. Use timeout on transport/client level.");
                 }
 
-                request.Arguments.Add(serializer.PackArgument(parameterType, args[i]));
+                var typeName = parameterType.AssemblyQualifiedName
+                    ?? parameterType.FullName
+                    ?? throw new InvalidOperationException($"Cannot resolve type name for {parameterType}.");
+
+                var bytes = JsonSerializer.SerializeToUtf8Bytes(args[i], parameterType, RpcJson.Options);
+                using var doc = JsonDocument.Parse(bytes);
+
+                request.Arguments.Add(new RpcArgument
+                {
+                    TypeName = typeName,
+                    Payload = doc.RootElement.Clone()
+                });
             }
 
             return request;

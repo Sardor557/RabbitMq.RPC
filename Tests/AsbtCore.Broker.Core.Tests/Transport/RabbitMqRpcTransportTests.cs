@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
