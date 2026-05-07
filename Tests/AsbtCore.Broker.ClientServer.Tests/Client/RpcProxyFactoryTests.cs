@@ -24,8 +24,6 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
             var route = new Mock<IRpcRouteResolver>();
             route.Setup(x => x.Resolve(It.IsAny<Type>())).Returns("rpc.route");
 
-            var serializer = new JsonRpcSerializer();
-
             var resultBytes = JsonSerializer.SerializeToUtf8Bytes(10, typeof(int), RpcJson.Options);
             using var resultDoc = JsonDocument.Parse(resultBytes);
             var packedResult = resultDoc.RootElement.Clone();
@@ -45,7 +43,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
                 ClientProvidedName = "c", Port = 5672
             });
 
-            var client = new RpcClient(transport.Object, route.Object, serializer, options);
+            var client = new RpcClient(transport.Object, route.Object, options);
             var factory = new RpcProxyFactory(client, options);
 
             var proxy = factory.CreateProxy<ITestService>();
@@ -73,7 +71,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client
                 ClientProvidedName = "c", Port = 1, DefaultTimeoutSeconds = 7
             });
 
-            var client = new RpcClient(transportSpy, route.Object, new JsonRpcSerializer(), options);
+            var client = new RpcClient(transportSpy, route.Object, options);
             var factory = new RpcProxyFactory(client, options);
 
             var proxy = factory.CreateProxy<ITestService>();

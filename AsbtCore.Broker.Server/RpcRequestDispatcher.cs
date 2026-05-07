@@ -82,7 +82,7 @@ public sealed class RpcRequestDispatcher
                 Result = logicalResultType is null ? null : RpcSerializationHelper.ToElement(result, logicalResultType)
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return CreateError(request.RequestId, "server_error", ex.Message, ex);
         }

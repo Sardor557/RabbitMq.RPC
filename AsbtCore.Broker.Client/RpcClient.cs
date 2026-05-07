@@ -18,7 +18,6 @@ public sealed class RpcClient
     public RpcClient(
         IRpcTransport transport,
         IRpcRouteResolver routeResolver,
-        IRpcSerializer serializer,
         IOptions<RpcOptions> options)
     {
         this.transport = transport;
