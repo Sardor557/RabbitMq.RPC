@@ -35,6 +35,7 @@ public sealed class RpcSerializationHelperTests
         var restored = (SampleDto?)RpcSerializationHelper.FromElement(element, typeof(SampleDto));
 
         Assert.IsNotNull(restored);
+        // record equality on double[] compares by reference, so assert fields individually
         Assert.AreEqual(input.Id, restored.Id);
         Assert.AreEqual(input.Name, restored.Name);
         CollectionAssert.AreEqual(input.Values, restored.Values);
