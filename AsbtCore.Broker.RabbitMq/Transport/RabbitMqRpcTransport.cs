@@ -109,7 +109,13 @@ public sealed class RabbitMqRpcTransport : IRpcTransport, IAsyncDisposable, IDis
 
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
 
-            publishChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+            var publishChannelOptions = new CreateChannelOptions(
+                publisherConfirmationsEnabled: true,
+                publisherConfirmationTrackingEnabled: true);
+
+            publishChannel = await connection.CreateChannelAsync(
+                options: publishChannelOptions,
+                cancellationToken: cancellationToken);
             replyChannel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
             var queueName = $"rpc-reply-{this.options.ClientProvidedName}-{Guid.NewGuid():N}";
