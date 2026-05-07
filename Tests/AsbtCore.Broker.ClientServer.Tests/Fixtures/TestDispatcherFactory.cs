@@ -48,7 +48,7 @@ internal static class TestDispatcherFactory
         var interfaceMethod = typeof(TInterface).GetMethod(methodName)!;
         var implMethod = typeof(TImpl).GetMethod(methodName)!;
         var invoker = RpcServerMethodInvoker.Build(implMethod);
-        var entry = new RpcMethodEntry(interfaceMethod, invoker);
+        var entry = new RpcMethodEntry(interfaceMethod, invoker, null);
 
         var methodKey = RpcServerDescriptor.BuildMethodKey(methodName, new[] { bogusTypeName });
         var methodMap = new Dictionary<string, RpcMethodEntry> { [methodKey] = entry };

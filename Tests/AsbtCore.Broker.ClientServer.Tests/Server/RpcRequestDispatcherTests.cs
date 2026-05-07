@@ -160,6 +160,25 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server
         }
 
         [TestMethod]
+        public async Task DispatchAsync_MethodThrowsUserException_ReturnsUnwrappedInvocationError()
+        {
+            var dispatcher = TestDispatcherFactory.Create<IThrowingService, ThrowingService>();
+            var request = new RpcRequest
+            {
+                InterfaceName = typeof(IThrowingService).FullName!,
+                MethodName = nameof(IThrowingService.FailAsync),
+                Arguments = { }
+            };
+
+            var response = await dispatcher.DispatchAsync(request);
+
+            Assert.IsFalse(response.Success);
+            Assert.AreEqual("invocation_error", response.Error!.Code);
+            Assert.AreEqual("user fail", response.Error!.Message);
+            StringAssert.Contains(response.Error!.ExceptionType, nameof(InvalidOperationException));
+        }
+
+        [TestMethod]
         public async Task DispatchAsync_MalformedArgumentPayload_ReturnsDeserializationError()
         {
             var dispatcher = TestDispatcherFactory.Create<ITestService, TestServiceImpl>();

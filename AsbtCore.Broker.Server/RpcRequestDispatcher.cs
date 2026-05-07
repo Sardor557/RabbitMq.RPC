@@ -1,4 +1,3 @@
-using System.Reflection;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,17 +67,12 @@ public sealed class RpcRequestDispatcher
             {
                 result = await entry.Invoker(service, args);
             }
-            catch (TargetInvocationException ex)
-            {
-                var real = ex.InnerException ?? ex;
-                return CreateError(request.RequestId, "invocation_error", real.Message, real);
-            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 return CreateError(request.RequestId, "invocation_error", ex.Message, ex);
             }
 
-            var logicalResultType = GetLogicalResultType(entry.Method.ReturnType);
+            var logicalResultType = entry.LogicalResultType;
 
             return new RpcResponse
             {
@@ -92,17 +86,6 @@ public sealed class RpcRequestDispatcher
         {
             return CreateError(request.RequestId, "server_error", ex.Message, ex);
         }
-    }
-
-    private static Type? GetLogicalResultType(Type returnType)
-    {
-        if (returnType == typeof(void) || returnType == typeof(Task))
-            return null;
-
-        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-            return returnType.GetGenericArguments()[0];
-
-        return returnType;
     }
 
     private static RpcResponse CreateError(string requestId, string code, string message, Exception? exception = null)

@@ -1,8 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace AsbtCore.Broker.Server;
 
-internal sealed record RpcMethodEntry(MethodInfo Method, RpcMethodInvocation Invoker);
+internal sealed record RpcMethodEntry(MethodInfo Method, RpcMethodInvocation Invoker, Type? LogicalResultType);
 
 public sealed class RpcServerDescriptor
 {
@@ -27,7 +28,7 @@ public sealed class RpcServerDescriptor
         this.methods = methods;
     }
 
-    internal bool TryGetMethod(string methodName, IReadOnlyList<string> parameterTypeNames, out RpcMethodEntry entry)
+    internal bool TryGetMethod(string methodName, IReadOnlyList<string> parameterTypeNames, [MaybeNullWhen(false)] out RpcMethodEntry entry)
     {
         var key = BuildMethodKey(methodName, parameterTypeNames);
         return methods.TryGetValue(key, out entry!);

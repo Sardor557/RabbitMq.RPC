@@ -59,9 +59,21 @@ public sealed class RpcServerRegistry
 
             var key = RpcServerDescriptor.BuildMethodKey(interfaceMethod.Name, parameterTypeNames);
             var invoker = RpcServerMethodInvoker.Build(targetMethod);
-            result[key] = new RpcMethodEntry(targetMethod, invoker);
+            var logicalResultType = GetLogicalResultType(targetMethod.ReturnType);
+            result[key] = new RpcMethodEntry(targetMethod, invoker, logicalResultType);
         }
 
         return result;
+    }
+
+    private static Type? GetLogicalResultType(Type returnType)
+    {
+        if (returnType == typeof(void) || returnType == typeof(Task))
+            return null;
+
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+            return returnType.GetGenericArguments()[0];
+
+        return returnType;
     }
 }
