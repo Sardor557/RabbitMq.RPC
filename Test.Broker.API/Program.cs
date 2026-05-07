@@ -55,9 +55,11 @@ namespace AsbtCore.Broker.API
             builder.Services.AddMemoryCache();
             builder.Services.AddHttpContextAccessor();
 
-            builder.Services.AddRpcSerialization<JsonRpcSerializer> ();
+            //builder.Services.AddRpcSerialization<JsonRpcSerializer> ();
             builder.Services.AddRabbitRpcServer(builder.Configuration)
                 .Register<IUserService, UserService>(ServiceLifetime.Scoped);
+
+            builder.Services.AddRpcSerialization<MessagePackRpcSerializer>();
 
 
             var app = builder.Build();

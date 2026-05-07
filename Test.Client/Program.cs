@@ -21,12 +21,17 @@ namespace AsbtCore.Broker.Demo.Client
                     .Enrich.FromLogContext();
             });
 
-            builder.Services.AddRpcSerialization<JsonRpcSerializer>();  
+            //builder.Services.AddRpcSerialization<JsonRpcSerializer>();  
+            builder.Services.AddRpcSerialization<MessagePackRpcSerializer>();
             builder.Services
                 .AddRabbitRpcClient(builder.Configuration)
                 .AddRpcProxy<IUserService>();
 
             using var host = builder.Build();
+
+            var serializer = host.Services.GetRequiredService<IRpcSerializer>();
+            Console.WriteLine($">>> Using serializer: {serializer.GetType().Name}");
+            Console.WriteLine($">>> ContentType: {serializer.ContentType}");
 
             var userService = host.Services.GetRequiredService<IUserService>();
 
@@ -40,16 +45,13 @@ namespace AsbtCore.Broker.Demo.Client
 
             while (true)
             {
-                Console.WriteLine("Enter two numbers to sum (or 'exit' to quit):");                
+              
+                //var sum = await userService.SumAsync(Convert.ToInt32(a), Convert.ToInt32(b));
+                //Console.WriteLine($"Sum = {sum}");
 
-                var a = Console.ReadLine();
-                var b = Console.ReadLine();
 
-                if (a?.Trim().ToLower() == "exit" || b.Trim().ToLower() == "exit")
-                    break;
+                var ls = userService.GetManyAsync(1000);
 
-                var sum = await userService.SumAsync(Convert.ToInt32(a), Convert.ToInt32(b));
-                Console.WriteLine($"Sum = {sum}");
             }
         }
     }

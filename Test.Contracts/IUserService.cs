@@ -1,15 +1,15 @@
-﻿namespace AsbtCore.Broker.Demo.Contracts
+﻿using Contracts.Models;
+
+namespace AsbtCore.Broker.Demo.Contracts
 {
-    public sealed class UserDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; }
-    }
 
     public interface IUserService
     {
         Task<UserDto> GetByIdAsync(int id);
         Task<int> SumAsync(int a, int b);
         Task PingAsync();
+
+        Task<List<UserDto>> GetManyAsync(int count);
+
     }
 }

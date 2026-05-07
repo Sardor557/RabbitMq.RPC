@@ -1,4 +1,5 @@
 ﻿using AsbtCore.Broker.Demo.Contracts;
+using Contracts.Models;
 
 namespace AsbtCore.Broker.API.Services
 {
