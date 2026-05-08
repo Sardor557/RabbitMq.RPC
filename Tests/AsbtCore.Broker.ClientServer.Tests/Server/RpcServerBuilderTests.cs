@@ -2,57 +2,54 @@ using System.Linq;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace AsbtCore.Broker.ClientServer.Tests.Server
+namespace AsbtCore.Broker.ClientServer.Tests.Server;
+
+public class RpcServerBuilderTests
 {
-    [TestClass]
-    public class RpcServerBuilderTests
+    [Test]
+    public async Task Register_AddsImplementationAndInterfaceToDi()
     {
-        [TestMethod]
-        public void Register_AddsImplementationAndInterfaceToDi()
-        {
-            var services = new ServiceCollection();
-            var sut = new RpcServerBuilder(services);
+        var services = new ServiceCollection();
+        var sut = new RpcServerBuilder(services);
 
-            sut.Register<ITestService, TestServiceImpl>();
+        sut.Register<ITestService, TestServiceImpl>();
 
-            var sp = services.BuildServiceProvider();
-            using var scope = sp.CreateScope();
-            Assert.IsInstanceOfType(scope.ServiceProvider.GetRequiredService<ITestService>(), typeof(TestServiceImpl));
-            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<TestServiceImpl>());
-        }
+        var sp = services.BuildServiceProvider();
+        using var scope = sp.CreateScope();
+        await Assert.That(scope.ServiceProvider.GetRequiredService<ITestService>()).IsAssignableTo<TestServiceImpl>();
+        await Assert.That(scope.ServiceProvider.GetRequiredService<TestServiceImpl>()).IsNotNull();
+    }
 
-        [TestMethod]
-        public void Register_AddsRpcServerRegistration()
-        {
-            var services = new ServiceCollection();
-            var sut = new RpcServerBuilder(services);
+    [Test]
+    public async Task Register_AddsRpcServerRegistration()
+    {
+        var services = new ServiceCollection();
+        var sut = new RpcServerBuilder(services);
 
-            sut.Register<ITestService, TestServiceImpl>(route: "custom.route");
+        sut.Register<ITestService, TestServiceImpl>(route: "custom.route");
 
-            var sp = services.BuildServiceProvider();
-            var registrations = sp.GetServices<RpcServerRegistration>().ToList();
+        var sp = services.BuildServiceProvider();
+        var registrations = sp.GetServices<RpcServerRegistration>().ToList();
 
-            Assert.AreEqual(1, registrations.Count);
-            Assert.AreEqual(typeof(ITestService), registrations[0].InterfaceType);
-            Assert.AreEqual(typeof(TestServiceImpl), registrations[0].ImplementationType);
-            Assert.AreEqual("custom.route", registrations[0].ExplicitRoute);
-        }
+        await Assert.That(registrations.Count).IsEqualTo(1);
+        await Assert.That(registrations[0].InterfaceType).IsEqualTo(typeof(ITestService));
+        await Assert.That(registrations[0].ImplementationType).IsEqualTo(typeof(TestServiceImpl));
+        await Assert.That(registrations[0].ExplicitRoute).IsEqualTo("custom.route");
+    }
 
-        [TestMethod]
-        public void Register_Singleton_UsesSingletonLifetime()
-        {
-            var services = new ServiceCollection();
-            var sut = new RpcServerBuilder(services);
+    [Test]
+    public async Task Register_Singleton_UsesSingletonLifetime()
+    {
+        var services = new ServiceCollection();
+        var sut = new RpcServerBuilder(services);
 
-            sut.Register<ITestService, TestServiceImpl>(ServiceLifetime.Singleton);
+        sut.Register<ITestService, TestServiceImpl>(ServiceLifetime.Singleton);
 
-            var sp = services.BuildServiceProvider();
-            var a = sp.GetRequiredService<ITestService>();
-            var b = sp.GetRequiredService<ITestService>();
+        var sp = services.BuildServiceProvider();
+        var a = sp.GetRequiredService<ITestService>();
+        var b = sp.GetRequiredService<ITestService>();
 
-            Assert.AreSame(a, b);
-        }
+        await Assert.That(b).IsSameReferenceAs(a);
     }
 }

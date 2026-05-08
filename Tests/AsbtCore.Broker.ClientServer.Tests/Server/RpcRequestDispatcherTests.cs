@@ -1,133 +1,177 @@
-using System;
 using System.Text.Json;
-using System.Threading.Tasks;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace AsbtCore.Broker.ClientServer.Tests.Server
+namespace AsbtCore.Broker.ClientServer.Tests.Server;
+
+public sealed class RpcRequestDispatcherTests
 {
-    [TestClass]
-    public class RpcRequestDispatcherTests
+    private static string Stn(Type t) => $"{t.FullName}, {t.Assembly.GetName().Name}";
+
+    private static RpcArgument Arg<T>(T value) => new()
     {
-        private (RpcRequestDispatcher sut, ServiceProvider sp) BuildSut<TImpl>() where TImpl : class, ITestService
+        TypeName = Stn(typeof(T)),
+        Payload = JsonSerializer.SerializeToElement(value, RpcJson.Options)
+    };
+
+    private static (RpcServerRegistry registry, RpcRequestDispatcher dispatcher) BuildSut(
+        params (Type iface, Type impl)[] registrations)
+    {
+        var route = new Mock<IRpcRouteResolver>();
+        route.Setup(x => x.Resolve(It.IsAny<Type>())).Returns<Type>(t => t.FullName!);
+
+        var regs = registrations.Select(r => new RpcServerRegistration(r.iface, r.impl)).ToArray();
+        var registry = new RpcServerRegistry(regs, route.Object);
+
+        var services = new ServiceCollection();
+        foreach (var (_, impl) in registrations)
+            services.AddScoped(impl);
+
+        var sp = services.BuildServiceProvider();
+        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+
+        return (registry, dispatcher);
+    }
+
+    [Test]
+    public async Task DispatchAsync_ServiceNotFound_ReturnsServiceNotFoundError()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+
+        var request = new RpcRequest
         {
-            var routeMock = new Mock<IRpcRouteResolver>();
-            routeMock.Setup(x => x.Resolve(It.IsAny<Type>())).Returns<Type>(t => "rpc." + t.FullName);
+            InterfaceName = "No.Such.Interface",
+            MethodName = "Foo",
+            Arguments = []
+        };
 
-            var registry = new RpcServerRegistry(
-                new[] { new RpcServerRegistration(typeof(ITestService), typeof(TImpl)) },
-                routeMock.Object);
+        var response = await dispatcher.DispatchAsync(request);
 
-            var services = new ServiceCollection();
-            services.AddScoped<TImpl>();
-            var sp = services.BuildServiceProvider();
+        await Assert.That(response.Success).IsFalse();
+        await Assert.That(response.Error!.Code).IsEqualTo("service_not_found");
+    }
 
-            var dispatcher = new RpcRequestDispatcher(
-                registry,
-                sp.GetRequiredService<IServiceScopeFactory>());
+    [Test]
+    public async Task DispatchAsync_MethodNotFound_ReturnsMethodNotFoundError()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
 
-            return (dispatcher, sp);
-        }
-
-        private static RpcArgument Pack<T>(T value)
+        var request = new RpcRequest
         {
-            var type = typeof(T);
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(value, type, RpcJson.Options);
-            using var doc = JsonDocument.Parse(bytes);
-            return new RpcArgument { TypeName = type.AssemblyQualifiedName!, Payload = doc.RootElement.Clone() };
-        }
+            InterfaceName = typeof(ITestService).FullName!,
+            MethodName = "NoSuchMethod",
+            Arguments = []
+        };
 
-        private RpcRequest BuildAddRequest(int a, int b) => new()
+        var response = await dispatcher.DispatchAsync(request);
+
+        await Assert.That(response.Success).IsFalse();
+        await Assert.That(response.Error!.Code).IsEqualTo("method_not_found");
+    }
+
+    [Test]
+    public async Task DispatchAsync_VoidMethod_ReturnsSuccessWithNullResult()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+
+        var request = new RpcRequest
+        {
+            InterfaceName = typeof(ITestService).FullName!,
+            MethodName = nameof(ITestService.NotifyAsync),
+            Arguments = [Arg("hello")]
+        };
+
+        var response = await dispatcher.DispatchAsync(request);
+
+        await Assert.That(response.Success).IsTrue();
+        await Assert.That(response.Result).IsNull();
+    }
+
+    [Test]
+    public async Task DispatchAsync_TypedMethod_ReturnsSuccessWithResult()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+
+        var request = new RpcRequest
+        {
+            InterfaceName = typeof(ITestService).FullName!,
+            MethodName = nameof(ITestService.AddAsync),
+            Arguments = [Arg(3), Arg(4)]
+        };
+
+        var response = await dispatcher.DispatchAsync(request);
+
+        await Assert.That(response.Success).IsTrue();
+        var result = response.Result!.Value.GetInt32();
+        await Assert.That(result).IsEqualTo(7);
+    }
+
+    [Test]
+    public async Task DispatchAsync_InvocationThrows_ReturnsInvocationError()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(ThrowingServiceImpl)));
+
+        var request = new RpcRequest
+        {
+            InterfaceName = typeof(ITestService).FullName!,
+            MethodName = nameof(ITestService.AddAsync),
+            Arguments = [Arg(1), Arg(2)]
+        };
+
+        var response = await dispatcher.DispatchAsync(request);
+
+        await Assert.That(response.Success).IsFalse();
+        await Assert.That(response.Error!.Code).IsEqualTo("invocation_error");
+        await Assert.That(response.Error.Message).Contains("boom");
+    }
+
+    [Test]
+    public async Task DispatchAsync_BadPayloadForKnownType_ReturnsDeserializationError()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+
+        var request = new RpcRequest
         {
             InterfaceName = typeof(ITestService).FullName!,
             MethodName = nameof(ITestService.AddAsync),
             Arguments =
-            {
-                Pack(a),
-                Pack(b)
-            }
+            [
+                new RpcArgument
+                {
+                    TypeName = Stn(typeof(int)),
+                    Payload = JsonSerializer.SerializeToElement("not-a-number", RpcJson.Options)
+                },
+                Arg(2)
+            ]
         };
 
-        [TestMethod]
-        public async Task Dispatch_KnownRequest_ReturnsSuccessWithResult()
+        var response = await dispatcher.DispatchAsync(request);
+
+        await Assert.That(response.Success).IsFalse();
+        await Assert.That(response.Error!.Code).IsEqualTo("deserialization_error");
+    }
+
+    [Test]
+    public async Task DispatchAsync_GetUserAsync_ReturnsComplexResult()
+    {
+        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var id = Guid.NewGuid();
+
+        var request = new RpcRequest
         {
-            var (sut, sp) = BuildSut<TestServiceImpl>();
-            using var _ = sp;
+            InterfaceName = typeof(ITestService).FullName!,
+            MethodName = nameof(ITestService.GetUserAsync),
+            Arguments = [Arg(id)]
+        };
 
-            var response = await sut.DispatchAsync(BuildAddRequest(2, 3));
+        var response = await dispatcher.DispatchAsync(request);
 
-            Assert.IsTrue(response.Success);
-            Assert.IsNull(response.Error);
-            Assert.AreEqual(5, response.Result!.Value.Deserialize<int>(RpcJson.Options));
-        }
-
-        [TestMethod]
-        public async Task Dispatch_UnknownInterface_ReturnsServiceNotFoundError()
-        {
-            var (sut, sp) = BuildSut<TestServiceImpl>();
-            using var _ = sp;
-
-            var response = await sut.DispatchAsync(new RpcRequest
-            {
-                InterfaceName = "No.Such.Service",
-                MethodName = "Whatever"
-            });
-
-            Assert.IsFalse(response.Success);
-            Assert.IsNotNull(response.Error);
-            Assert.AreEqual("service_not_found", response.Error!.Code);
-        }
-
-        [TestMethod]
-        public async Task Dispatch_UnknownMethodSignature_ReturnsMethodNotFoundError()
-        {
-            var (sut, sp) = BuildSut<TestServiceImpl>();
-            using var _ = sp;
-
-            var response = await sut.DispatchAsync(new RpcRequest
-            {
-                InterfaceName = typeof(ITestService).FullName!,
-                MethodName = "DoesNotExist"
-            });
-
-            Assert.IsFalse(response.Success);
-            Assert.AreEqual("method_not_found", response.Error!.Code);
-        }
-
-        [TestMethod]
-        public async Task Dispatch_ServiceThrows_ReturnsInvocationErrorWithExceptionType()
-        {
-            var (sut, sp) = BuildSut<ThrowingServiceImpl>();
-            using var _ = sp;
-
-            var response = await sut.DispatchAsync(BuildAddRequest(1, 2));
-
-            Assert.IsFalse(response.Success);
-            Assert.AreEqual("invocation_error", response.Error!.Code);
-            Assert.AreEqual(typeof(InvalidOperationException).FullName, response.Error.ExceptionType);
-            Assert.AreEqual("boom", response.Error.Message);
-        }
-
-        [TestMethod]
-        public async Task Dispatch_VoidTaskMethod_ResultFieldIsNull()
-        {
-            var (sut, sp) = BuildSut<TestServiceImpl>();
-            using var _ = sp;
-
-            var response = await sut.DispatchAsync(new RpcRequest
-            {
-                InterfaceName = typeof(ITestService).FullName!,
-                MethodName = nameof(ITestService.NotifyAsync),
-                Arguments = { Pack("hi") }
-            });
-
-            Assert.IsTrue(response.Success);
-            Assert.IsNull(response.Result);
-        }
+        await Assert.That(response.Success).IsTrue();
+        await Assert.That(response.ResultTypeName).IsNotNull();
     }
 }

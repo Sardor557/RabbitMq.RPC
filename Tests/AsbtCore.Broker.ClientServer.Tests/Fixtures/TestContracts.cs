@@ -36,4 +36,14 @@ namespace AsbtCore.Broker.ClientServer.Tests.Fixtures
         public Task NotifyAsync(string message) => Task.CompletedTask;
         public Task<UserDto> GetUserAsync(Guid id) => Task.FromResult(new UserDto(id, "U"));
     }
+
+    public interface IThrowingService
+    {
+        Task FailAsync();
+    }
+
+    public sealed class ThrowingService : IThrowingService
+    {
+        public Task FailAsync() => throw new InvalidOperationException("user fail");
+    }
 }

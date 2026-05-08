@@ -6,55 +6,52 @@ using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace AsbtCore.Broker.ClientServer.Tests.Client
+namespace AsbtCore.Broker.ClientServer.Tests.Client;
+
+public class ClientPackageExtensionsTests
 {
-    [TestClass]
-    public class ClientPackageExtensionsTests
+    private static IConfiguration BuildConfig() =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["RabbitMqRpc:HostName"] = "localhost",
+                ["RabbitMqRpc:Port"] = "5672",
+                ["RabbitMqRpc:VirtualHost"] = "/",
+                ["RabbitMqRpc:UserName"] = "guest",
+                ["RabbitMqRpc:Password"] = "guest",
+                ["RabbitMqRpc:ClientProvidedName"] = "test",
+                ["RabbitMqRpc:RoutePrefix"] = "rpc.",
+            })
+            .Build();
+
+    [Test]
+    public async Task AddRabbitRpcClient_RegistersCoreServices()
     {
-        private static IConfiguration BuildConfig() =>
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["RabbitMqRpc:HostName"] = "localhost",
-                    ["RabbitMqRpc:Port"] = "5672",
-                    ["RabbitMqRpc:VirtualHost"] = "/",
-                    ["RabbitMqRpc:UserName"] = "guest",
-                    ["RabbitMqRpc:Password"] = "guest",
-                    ["RabbitMqRpc:ClientProvidedName"] = "test",
-                    ["RabbitMqRpc:RoutePrefix"] = "rpc.",
-                })
-                .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
 
-        [TestMethod]
-        public void AddRabbitRpcClient_RegistersCoreServices()
-        {
-            var services = new ServiceCollection();
-            services.AddLogging();
+        services.AddRabbitRpcClient(BuildConfig());
+        var sp = services.BuildServiceProvider();
 
-            services.AddRabbitRpcClient(BuildConfig());
-            var sp = services.BuildServiceProvider();
+        await Assert.That(sp.GetService<IRpcSerializer>()).IsNotNull();
+        await Assert.That(sp.GetService<IRpcRouteResolver>()).IsNotNull();
+        await Assert.That(sp.GetService<RpcClient>()).IsNotNull();
+        await Assert.That(sp.GetService<RpcProxyFactory>()).IsNotNull();
+        await Assert.That(sp.GetService<IRabbitMqConnectionProvider>()).IsNotNull();
+    }
 
-            Assert.IsNotNull(sp.GetService<IRpcSerializer>());
-            Assert.IsNotNull(sp.GetService<IRpcRouteResolver>());
-            Assert.IsNotNull(sp.GetService<RpcClient>());
-            Assert.IsNotNull(sp.GetService<RpcProxyFactory>());
-            Assert.IsNotNull(sp.GetService<IRabbitMqConnectionProvider>());
-        }
+    [Test]
+    public async Task AddRpcProxy_ResolvesAsImplementationOfInterface()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRabbitRpcClient(BuildConfig());
+        services.AddRpcProxy<ITestService>();
+        var sp = services.BuildServiceProvider();
 
-        [TestMethod]
-        public void AddRpcProxy_ResolvesAsImplementationOfInterface()
-        {
-            var services = new ServiceCollection();
-            services.AddLogging();
-            services.AddRabbitRpcClient(BuildConfig());
-            services.AddRpcProxy<ITestService>();
-            var sp = services.BuildServiceProvider();
+        var proxy = sp.GetService<ITestService>();
 
-            var proxy = sp.GetService<ITestService>();
-
-            Assert.IsNotNull(proxy);
-        }
+        await Assert.That(proxy).IsNotNull();
     }
 }
