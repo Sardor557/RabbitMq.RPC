@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <PackageId>RabbitRpc.Serialization.SystemTextJson</PackageId>
+    <Title>RabbitRpc.Serialization.SystemTextJson</Title>
+    <Description>System.Text.Json adapter for RabbitRpc — provides IRpcSerializer over System.Text.Json with a ReadOnlyMemory&lt;byte&gt; base64 converter.</Description>
+    <PackageTags>rabbitmq;rpc;dotnet;json;serialization</PackageTags>
+
+    <Version>1.0.0</Version>
+    <Authors>AsbtCore</Authors>
+    <Company>AsbtCore</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Sardor557/AsbtCore.Broker</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AsbtCore.Broker.Core\AsbtCore.Broker.Core.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AsbtCore.Broker.Serialization.SystemTextJson.Tests" />
+  </ItemGroup>
+</Project>
