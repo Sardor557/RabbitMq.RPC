@@ -1,18 +1,19 @@
 # RabbitRpc.Server
 
-The server-side library for RabbitMQ RPC in .NET. Registers RPC method handlers via DI and starts a hosted service that listens to a RabbitMQ queue.
+Server-side library for RabbitMQ RPC on .NET 10. Register implementations of contract interfaces with DI; a hosted service listens on the configured RabbitMQ route and dispatches each incoming request to the matching method.
+
+**v4.0** introduces a pluggable serialization layer — you must pair this package with **one** of the adapter packages: [`RabbitRpc.Serialization.XPacketRpc`](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) (binary, recommended) or [`RabbitRpc.Serialization.SystemTextJson`](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) (JSON).
 
 ## Installation
 
-Install the package from NuGet:
-
 ```bash
 dotnet add package RabbitRpc.Server
+dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .SystemTextJson
 ```
 
 ## Configuration
 
-Add the `RabbitMqRpc` section to your `appsettings.json`:
+Add the `RabbitMqRpc` section to `appsettings.json`:
 
 ```json
 {
@@ -23,29 +24,31 @@ Add the `RabbitMqRpc` section to your `appsettings.json`:
     "UserName": "guest",
     "Password": "guest",
     "ClientProvidedName": "rabbit-rpc-server",
-    "PrefetchCount": 1
+    "RoutePrefix": "rpc.",
+    "PrefetchCount": 1,
+    "ConsumerDispatchConcurrency": null,
+    "DefaultTimeoutSeconds": 30
   }
 }
 ```
 
+`ConsumerDispatchConcurrency` defaults to `PrefetchCount`; handlers must be thread-safe when it is `> 1`. Set it to `1` for the v3.0 sequential-dispatch behaviour.
+
 ## Usage
 
-Define a contract interface (shared between client and server):
+Define a contract interface (shared between client and server) and implement it on the server:
 
 ```csharp
 public interface IMathService
 {
-    Task<int> AddAsync(int a, int b, CancellationToken ct = default);
+    Task<int>     AddAsync(int a, int b);
+    Task<UserDto> GetUserAsync(Guid id);
 }
-```
 
-Implement it on the server side:
-
-```csharp
-public class MathService : IMathService
+public sealed class MathService : IMathService
 {
-    public Task<int> AddAsync(int a, int b, CancellationToken ct = default)
-        => Task.FromResult(a + b);
+    public Task<int>     AddAsync(int a, int b) => Task.FromResult(a + b);
+    public Task<UserDto> GetUserAsync(Guid id)  => Task.FromResult(new UserDto(id, "Alice"));
 }
 ```
 
@@ -53,60 +56,33 @@ Register the server and handlers in `Program.cs`:
 
 ```csharp
 using AsbtCore.Broker.Server;
+using AsbtCore.Broker.Serialization.XPacketRpc;   // pick one adapter
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services
-    .AddRabbitRpcServerPackage(builder.Configuration)
+    .AddRabbitRpcServer(builder.Configuration)    // returns RpcServerBuilder
+    .UseXPacketRpcSerialization()                 // required in v4.0
     .Register<IMathService, MathService>();
 
 await builder.Build().RunAsync();
 ```
 
-The hosted service starts automatically and begins accepting RPC requests.
+The hosted service declares one durable queue per RPC route (`rpc.<InterfaceFullName>`), one companion dead-letter queue (`<route>.dead`), and starts consuming. Server-side exceptions are serialized and rethrown on the client as `RpcRemoteException`. Poison messages (deserialization failure, unresolvable type, dispatcher error) are routed to the DLQ after **a single attempt** — no requeue loops; monitor `*.dead` depth for alerting.
 
-## Building a NuGet Package
+## Migration v3.x → v4.0
 
-### Prerequisites
+| Was (v3.x)                              | Now (v4.0)                                                       |
+|-----------------------------------------|------------------------------------------------------------------|
+| `AddRabbitRpcServer(cfg)` returns `RpcServerBuilder`, defaults JSON | returns `RpcServerBuilder`, NO default serializer                 |
+| `services.AddRpcSerialization()`        | `builder.UseXxxSerialization()` from an adapter package          |
+| `JsonElement` result in `RpcResponse`   | `ReadOnlyMemory<byte>?`                                          |
+| `RpcRequestDispatcher` ctor with 2 args | ctor takes `IRpcSerializer` as a third parameter                 |
 
-- [.NET SDK](https://dotnet.microsoft.com/download) installed
-- Package metadata configured in the `.csproj` file:
-
-```xml
-<PropertyGroup>
-  <PackageId>RabbitRpc.Server</PackageId>
-  <Version>1.0.0</Version>
-  <Authors>Your Name</Authors>
-  <Description>Server-side RabbitMQ RPC library for .NET</Description>
-  <PackageTags>rabbitmq;rpc;server</PackageTags>
-  <RepositoryUrl>https://github.com/Sardor557/RabbitMq.RPC</RepositoryUrl>
-</PropertyGroup>
-```
-
-### Pack
-
-Build and create the `.nupkg` file:
-
-```bash
-dotnet pack -c Release
-```
-
-The output package will be placed in `bin/Release/`.
-
-### Publish to NuGet.org
-
-```bash
-dotnet nuget push bin/Release/RabbitRpc.Server.*.nupkg --api-key <YOUR_API_KEY> --source https://api.nuget.org/v3/index.json
-```
-
-Replace `<YOUR_API_KEY>` with your API key from [nuget.org](https://www.nuget.org/account/apikeys).
-
-### Publish to a local or private feed
-
-```bash
-dotnet nuget push bin/Release/RabbitRpc.Server.*.nupkg --source <FEED_URL>
-```
+Startup throws `OptionsValidationException` with a helpful message if no `IRpcSerializer` is registered. See the [repo migration guide](https://github.com/Sardor557/AsbtCore.Broker#migration-v31--v40) for the full break list.
 
 ## See Also
 
 - [RabbitRpc.Client](https://www.nuget.org/packages/RabbitRpc.Client) — client-side library with typed proxies.
+- [RabbitRpc.Serialization.XPacketRpc](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) — binary adapter (default since v4.0).
+- [RabbitRpc.Serialization.SystemTextJson](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) — JSON adapter for v3 wire compatibility.

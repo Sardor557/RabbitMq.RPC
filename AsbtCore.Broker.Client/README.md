@@ -1,18 +1,19 @@
 # RabbitRpc.Client
 
-The client-side library for RabbitMQ RPC in .NET. Provides typed proxies: inject a contract interface and call its methods like any regular service — the request is sent to RabbitMQ and the response is returned from the server.
+Client-side library for RabbitMQ RPC on .NET 10. Define a contract interface, register a typed proxy in DI, and call its methods like any local service — the request is sent via RabbitMQ and the response is awaited from the server.
+
+**v4.0** introduces a pluggable serialization layer — you must pair this package with **one** of the adapter packages: [`RabbitRpc.Serialization.XPacketRpc`](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) (binary, recommended) or [`RabbitRpc.Serialization.SystemTextJson`](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) (JSON).
 
 ## Installation
 
-Install the package from NuGet:
-
 ```bash
 dotnet add package RabbitRpc.Client
+dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .SystemTextJson
 ```
 
 ## Configuration
 
-Add the `RabbitMqRpc` section to your `appsettings.json`:
+Add the `RabbitMqRpc` section to `appsettings.json`:
 
 ```json
 {
@@ -23,92 +24,66 @@ Add the `RabbitMqRpc` section to your `appsettings.json`:
     "UserName": "guest",
     "Password": "guest",
     "ClientProvidedName": "rabbit-rpc-client",
-    "PrefetchCount": 1
+    "RoutePrefix": "rpc.",
+    "PrefetchCount": 1,
+    "DefaultTimeoutSeconds": 30
   }
 }
 ```
 
 ## Usage
 
-Define a contract interface (shared between client and server):
+Define a contract interface (shared between client and server, no `CancellationToken` parameters — timeouts live on the transport):
 
 ```csharp
 public interface IMathService
 {
-    Task<int> AddAsync(int a, int b, CancellationToken ct = default);
+    Task<int>     AddAsync(int a, int b);
+    Task<UserDto> GetUserAsync(Guid id);
 }
+
+public sealed record UserDto(Guid Id, string Name);
 ```
 
-Register the client and proxy in `Program.cs`:
+Register the client and a typed proxy in `Program.cs`:
 
 ```csharp
 using AsbtCore.Broker.Client;
+using AsbtCore.Broker.Serialization.XPacketRpc;   // pick one adapter
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddRabbitRpcClientPackage(builder.Configuration);
-builder.Services.AddRabbitRpcProxy<IMathService>(TimeSpan.FromSeconds(30));
+builder.Services
+    .AddRabbitRpcClient(builder.Configuration)    // returns RpcClientBuilder
+    .UseXPacketRpcSerialization()                 // required in v4.0
+    .AddProxy<IMathService>();                    // was AddRpcProxy<T> in v3
 ```
 
 Inject and use the proxy like any other DI service:
 
 ```csharp
-public class CalculatorController : ControllerBase
+public sealed class CalculatorController(IMathService math) : ControllerBase
 {
-    private readonly IMathService _math;
-
-    public CalculatorController(IMathService math) => _math = math;
-
     [HttpGet("add")]
-    public Task<int> Add(int a, int b, CancellationToken ct)
-        => _math.AddAsync(a, b, ct);
+    public Task<int> Add(int a, int b) => math.AddAsync(a, b);
 }
 ```
 
-The `timeout` parameter in `AddRabbitRpcProxy<T>` sets the response wait timeout (defaults to the value from transport settings).
+The per-call timeout defaults to `RpcOptions.DefaultTimeoutSeconds`; expired calls surface as `TaskCanceledException`. Server-side exceptions arrive as `RpcRemoteException` with `RemoteCode` / `RemoteExceptionType` / `RemoteDetails` populated.
 
-## Building a NuGet Package
+## Migration v3.x → v4.0
 
-### Prerequisites
+| Was (v3.x)                              | Now (v4.0)                                                       |
+|-----------------------------------------|------------------------------------------------------------------|
+| `AddRabbitRpcClient(cfg)` returns `IServiceCollection` | returns `RpcClientBuilder`                                       |
+| `services.AddRpcProxy<T>()` extension   | `builder.AddProxy<T>()` on `RpcClientBuilder`                    |
+| Default JSON wired automatically        | Adapter package + `.UseXxxSerialization()` is **required**       |
+| `JsonElement` payload in `RpcRequest`   | `ReadOnlyMemory<byte>` (only matters for custom transports)      |
 
-- [.NET SDK](https://dotnet.microsoft.com/download) installed
-- Package metadata configured in the `.csproj` file:
-
-```xml
-<PropertyGroup>
-  <PackageId>RabbitRpc.Client</PackageId>
-  <Version>1.0.0</Version>
-  <Authors>Your Name</Authors>
-  <Description>Client-side RabbitMQ RPC library for .NET</Description>
-  <PackageTags>rabbitmq;rpc;client</PackageTags>
-  <RepositoryUrl>https://github.com/Sardor557/RabbitMq.RPC</RepositoryUrl>
-</PropertyGroup>
-```
-
-### Pack
-
-Build and create the `.nupkg` file:
-
-```bash
-dotnet pack -c Release
-```
-
-The output package will be placed in `bin/Release/`.
-
-### Publish to NuGet.org
-
-```bash
-dotnet nuget push bin/Release/RabbitRpc.Client.*.nupkg --api-key <YOUR_API_KEY> --source https://api.nuget.org/v3/index.json
-```
-
-Replace `<YOUR_API_KEY>` with your API key from [nuget.org](https://www.nuget.org/account/apikeys).
-
-### Publish to a local or private feed
-
-```bash
-dotnet nuget push bin/Release/RabbitRpc.Client.*.nupkg --source <FEED_URL>
-```
+See the [repo migration guide](https://github.com/Sardor557/AsbtCore.Broker#migration-v31--v40) for the full break list.
 
 ## See Also
 
-- [RabbitRpc.Server](https://www.nuget.org/packages/RabbitRpc.Server) — server-side library for hosting RPC handlers.
+- [RabbitRpc.Server](https://www.nuget.org/packages/RabbitRpc.Server) — server-side library that hosts RPC implementations.
+- [RabbitRpc.Serialization.XPacketRpc](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) — binary adapter (default since v4.0).
+- [RabbitRpc.Serialization.SystemTextJson](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) — JSON adapter for v3 wire compatibility.
