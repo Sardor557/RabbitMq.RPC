@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\AsbtCore.Broker.Serialization.SystemTextJson\AsbtCore.Broker.Serialization.SystemTextJson.csproj" />
+    <ProjectReference Include="..\..\AsbtCore.Broker.Core\AsbtCore.Broker.Core.csproj" />
   </ItemGroup>
 </Project>
