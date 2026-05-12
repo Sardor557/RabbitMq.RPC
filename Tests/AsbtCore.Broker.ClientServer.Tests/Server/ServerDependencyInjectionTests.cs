@@ -1,9 +1,13 @@
+using System.Linq;
+using System.Threading.Tasks;
+using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Core.Serialization;
+using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace AsbtCore.Broker.ClientServer.Tests.Server;
 
@@ -44,14 +48,14 @@ public sealed class ServerDependencyInjectionTests
     }
 
     [Test]
-    public async Task AddRabbitRpcServer_RegistersIRpcSerializer()
+    public async Task AddRabbitRpcServer_DoesNotRegisterDefaultSerializer()
     {
         var services = new ServiceCollection();
         services.AddRabbitRpcServer(BuildConfig());
 
         var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IRpcSerializer));
 
-        await Assert.That(descriptor).IsNotNull();
+        await Assert.That(descriptor).IsNull();
     }
 
     [Test]
@@ -87,5 +91,23 @@ public sealed class ServerDependencyInjectionTests
             .Any(d => d.ImplementationType == typeof(RpcServerHostedService));
 
         await Assert.That(hostedServiceDescriptor).IsTrue();
+    }
+
+    [Test]
+    public async Task BuildHost_WithoutSerializer_ThrowsOptionsValidationException()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRabbitRpcServer(BuildConfig());
+
+        using var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<OptionsValidationException>(() =>
+        {
+            _ = sp.GetRequiredService<IOptions<RpcOptions>>().Value;
+        });
+
+        await Assert.That(ex).IsNotNull();
+        await Assert.That(string.Join("|", ex!.Failures)).Contains("IRpcSerializer");
     }
 }

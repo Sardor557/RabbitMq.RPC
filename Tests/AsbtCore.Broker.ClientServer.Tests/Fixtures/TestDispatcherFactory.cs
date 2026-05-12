@@ -26,7 +26,7 @@ internal static class TestDispatcherFactory
         services.AddScoped<TInterface>(sp => sp.GetRequiredService<TImpl>());
         var sp = services.BuildServiceProvider();
 
-        return new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+        return new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>(), new TestSerializer());
     }
 
     /// <summary>
@@ -72,7 +72,7 @@ internal static class TestDispatcherFactory
         services.AddScoped<TInterface>(sp => sp.GetRequiredService<TImpl>());
         var sp = services.BuildServiceProvider();
 
-        return (new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>()), bogusTypeName);
+        return (new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>(), new TestSerializer()), bogusTypeName);
     }
 
     private static RpcServerRegistry CreateRegistryFromMap(Dictionary<string, RpcServerDescriptor> map)

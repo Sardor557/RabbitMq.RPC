@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using AsbtCore.Broker.Core.Internal;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AsbtCore.Broker.Server
@@ -26,6 +27,7 @@ namespace AsbtCore.Broker.Server
                 typeof(TImplementation),
                 route));
 
+            Services.AddSingleton(new RpcInterfaceRegistration(typeof(TInterface)));
             return this;
         }
     }

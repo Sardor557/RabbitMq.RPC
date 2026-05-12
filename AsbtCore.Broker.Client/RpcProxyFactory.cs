@@ -1,4 +1,5 @@
 using System.Reflection;
+using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
 using Microsoft.Extensions.Options;
 
@@ -7,16 +8,20 @@ namespace AsbtCore.Broker.Client;
 public sealed class RpcProxyFactory
 {
     private readonly RpcClient client;
+    private readonly IRpcSerializer serializer;
     private readonly TimeSpan defaultTimeout;
 
-    public RpcProxyFactory(RpcClient client, IOptions<RpcOptions> options)
+    public RpcProxyFactory(RpcClient client, IRpcSerializer serializer, IOptions<RpcOptions> options)
     {
         this.client = client;
+        this.serializer = serializer;
         this.defaultTimeout = TimeSpan.FromSeconds(options.Value.DefaultTimeoutSeconds);
     }
 
     public T CreateProxy<T>() where T : class
     {
+        (serializer as IRpcSerializerInterfaceWarmup)?.Prewarm(typeof(T));
+
         var proxy = DispatchProxy.Create<T, RpcDispatchProxy>();
 
         if (proxy is not RpcDispatchProxy dispatchProxy)

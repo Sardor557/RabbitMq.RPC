@@ -1,4 +1,5 @@
 using AsbtCore.Broker.Core;
+using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -8,11 +9,16 @@ public sealed class RpcRequestDispatcher
 {
     private readonly RpcServerRegistry registry;
     private readonly IServiceScopeFactory scopeFactory;
+    private readonly IRpcSerializer serializer;
 
-    public RpcRequestDispatcher(RpcServerRegistry registry, IServiceScopeFactory scopeFactory)
+    public RpcRequestDispatcher(
+        RpcServerRegistry registry,
+        IServiceScopeFactory scopeFactory,
+        IRpcSerializer serializer)
     {
         this.registry = registry;
         this.scopeFactory = scopeFactory;
+        this.serializer = serializer;
     }
 
     public async Task<RpcResponse> DispatchAsync(RpcRequest request, CancellationToken cancellationToken = default)
@@ -53,7 +59,7 @@ public sealed class RpcRequestDispatcher
 
                 try
                 {
-                    args[i] = RpcSerializationHelper.FromElement(arg.Payload, type);
+                    args[i] = serializer.DeserializeFragment(arg.Payload, type);
                 }
                 catch (Exception ex)
                 {
@@ -74,12 +80,22 @@ public sealed class RpcRequestDispatcher
 
             var logicalResultType = entry.LogicalResultType;
 
+            ReadOnlyMemory<byte>? resultPayload;
+            if (logicalResultType is null)
+            {
+                resultPayload = null;
+            }
+            else
+            {
+                resultPayload = serializer.SerializeFragment(result, logicalResultType);
+            }
+
             return new RpcResponse
             {
                 RequestId = request.RequestId,
                 Success = true,
                 ResultTypeName = logicalResultType is null ? null : StableTypeName.From(logicalResultType),
-                Result = logicalResultType is null ? null : RpcSerializationHelper.ToElement(result, logicalResultType)
+                Result = resultPayload
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

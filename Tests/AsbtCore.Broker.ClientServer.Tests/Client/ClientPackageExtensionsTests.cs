@@ -1,11 +1,13 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using AsbtCore.Broker.Client;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Core.Serialization;
+using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AsbtCore.Broker.ClientServer.Tests.Client;
 
@@ -31,10 +33,13 @@ public class ClientPackageExtensionsTests
         var services = new ServiceCollection();
         services.AddLogging();
 
-        services.AddRabbitRpcClient(BuildConfig());
+        var builder = services.AddRabbitRpcClient(BuildConfig());
+        // user must provide serializer separately (v4 breaking change)
+        services.AddSingleton<IRpcSerializer, TestSerializer>();
+
         var sp = services.BuildServiceProvider();
 
-        await Assert.That(sp.GetService<IRpcSerializer>()).IsNotNull();
+        await Assert.That(builder).IsAssignableTo<RpcClientBuilder>();
         await Assert.That(sp.GetService<IRpcRouteResolver>()).IsNotNull();
         await Assert.That(sp.GetService<RpcClient>()).IsNotNull();
         await Assert.That(sp.GetService<RpcProxyFactory>()).IsNotNull();
@@ -42,16 +47,44 @@ public class ClientPackageExtensionsTests
     }
 
     [Test]
-    public async Task AddRpcProxy_ResolvesAsImplementationOfInterface()
+    public async Task AddRabbitRpcClient_DoesNotRegisterDefaultSerializer()
+    {
+        var services = new ServiceCollection();
+        services.AddRabbitRpcClient(BuildConfig());
+
+        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IRpcSerializer));
+
+        await Assert.That(descriptor).IsNull();
+    }
+
+    [Test]
+    public async Task AddProxy_OnBuilder_RegistersProxyForInterface()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddRabbitRpcClient(BuildConfig());
-        services.AddRpcProxy<ITestService>();
+        services.AddRabbitRpcClient(BuildConfig()).AddProxy<ITestService>();
+        services.AddSingleton<IRpcSerializer, TestSerializer>();
         var sp = services.BuildServiceProvider();
 
         var proxy = sp.GetService<ITestService>();
 
         await Assert.That(proxy).IsNotNull();
+    }
+
+    [Test]
+    public async Task BuildHost_WithoutSerializer_ThrowsOptionsValidationException()
+    {
+        var services = new ServiceCollection();
+        services.AddRabbitRpcClient(BuildConfig());
+
+        using var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<OptionsValidationException>(() =>
+        {
+            _ = sp.GetRequiredService<IOptions<RpcOptions>>().Value;
+        });
+
+        await Assert.That(ex).IsNotNull();
+        await Assert.That(string.Join("|", ex!.Failures)).Contains("IRpcSerializer");
     }
 }

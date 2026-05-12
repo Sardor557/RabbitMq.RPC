@@ -1,6 +1,5 @@
 using System;
 using System.Reflection;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Client;
@@ -9,7 +8,6 @@ using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Exceptions;
 using AsbtCore.Broker.Core.Options;
-using AsbtCore.Broker.Core.Serialization;
 using Moq;
 using MsOptions = Microsoft.Extensions.Options.Options;
 
@@ -19,6 +17,7 @@ public class RpcClientTests
 {
     private Mock<IRpcTransport> transportMock = null!;
     private Mock<IRpcRouteResolver> routeMock = null!;
+    private TestSerializer serializer = null!;
     private RpcOptions options = null!;
 
     [Before(Test)]
@@ -27,6 +26,7 @@ public class RpcClientTests
         transportMock = new Mock<IRpcTransport>();
         routeMock = new Mock<IRpcRouteResolver>();
         routeMock.Setup(x => x.Resolve(It.IsAny<Type>())).Returns("rpc.route");
+        serializer = new TestSerializer();
         options = new RpcOptions
         {
             HostName = "x", VirtualHost = "/", UserName = "u", Password = "p",
@@ -35,17 +35,13 @@ public class RpcClientTests
     }
 
     private RpcClient CreateSut()
-        => new(transportMock.Object, routeMock.Object, MsOptions.Create(options));
+        => new(transportMock.Object, routeMock.Object, serializer, MsOptions.Create(options));
 
     private static MethodInfo Method(string name)
         => typeof(ITestService).GetMethod(name)!;
 
-    private static JsonElement? PackResult(object? value, Type type)
-    {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, type, RpcJson.Options);
-        using var doc = JsonDocument.Parse(bytes);
-        return doc.RootElement.Clone();
-    }
+    private static ReadOnlyMemory<byte>? PackResult(object? value, Type type)
+        => TestSerializer.BuildFragment(value, type);
 
     [Test]
     public async Task Invoke_TaskOfT_ReturnsDeserializedResult()
@@ -165,5 +161,28 @@ public class RpcClientTests
         await task;
 
         await Assert.That(captured).IsEqualTo(TimeSpan.FromSeconds(7));
+    }
+
+    [Test]
+    public async Task BuildRequest_CallsSerializeFragment_OncePerArgument()
+    {
+        transportMock
+            .Setup(x => x.SendAsync(It.IsAny<RpcRequest>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RpcResponse
+            {
+                RequestId = "r",
+                Success = true,
+                Result = PackResult(42, typeof(int))
+            });
+
+        var sut = CreateSut();
+        var task = (Task<int>)sut.GetType()
+            .GetMethod("InvokeProxy", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(sut, new object?[] { typeof(ITestService), Method(nameof(ITestService.AddAsync)), new object[] { 1, 2 }, null })!;
+        await task;
+
+        // AddAsync has 2 parameters → 2 SerializeFragment calls; response result → 1 DeserializeFragment call.
+        await Assert.That(serializer.SerializeFragmentCalls).IsEqualTo(2);
+        await Assert.That(serializer.DeserializeFragmentCalls).IsEqualTo(1);
     }
 }

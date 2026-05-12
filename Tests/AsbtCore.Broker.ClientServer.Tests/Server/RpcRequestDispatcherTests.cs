@@ -1,8 +1,7 @@
-using System.Text.Json;
+using System.Text;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -16,10 +15,10 @@ public sealed class RpcRequestDispatcherTests
     private static RpcArgument Arg<T>(T value) => new()
     {
         TypeName = Stn(typeof(T)),
-        Payload = JsonSerializer.SerializeToElement(value, RpcJson.Options)
+        Payload = TestSerializer.BuildFragment(value, typeof(T))
     };
 
-    private static (RpcServerRegistry registry, RpcRequestDispatcher dispatcher) BuildSut(
+    private static (RpcServerRegistry registry, RpcRequestDispatcher dispatcher, TestSerializer serializer) BuildSut(
         params (Type iface, Type impl)[] registrations)
     {
         var route = new Mock<IRpcRouteResolver>();
@@ -33,15 +32,16 @@ public sealed class RpcRequestDispatcherTests
             services.AddScoped(impl);
 
         var sp = services.BuildServiceProvider();
-        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+        var serializer = new TestSerializer();
+        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>(), serializer);
 
-        return (registry, dispatcher);
+        return (registry, dispatcher, serializer);
     }
 
     [Test]
     public async Task DispatchAsync_ServiceNotFound_ReturnsServiceNotFoundError()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var (_, dispatcher, _) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
 
         var request = new RpcRequest
         {
@@ -59,7 +59,7 @@ public sealed class RpcRequestDispatcherTests
     [Test]
     public async Task DispatchAsync_MethodNotFound_ReturnsMethodNotFoundError()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var (_, dispatcher, _) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
 
         var request = new RpcRequest
         {
@@ -77,7 +77,7 @@ public sealed class RpcRequestDispatcherTests
     [Test]
     public async Task DispatchAsync_VoidMethod_ReturnsSuccessWithNullResult()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var (_, dispatcher, _) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
 
         var request = new RpcRequest
         {
@@ -89,13 +89,13 @@ public sealed class RpcRequestDispatcherTests
         var response = await dispatcher.DispatchAsync(request);
 
         await Assert.That(response.Success).IsTrue();
-        await Assert.That(response.Result).IsNull();
+        await Assert.That(response.Result.HasValue).IsFalse();
     }
 
     [Test]
     public async Task DispatchAsync_TypedMethod_ReturnsSuccessWithResult()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var (_, dispatcher, serializer) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
 
         var request = new RpcRequest
         {
@@ -107,14 +107,14 @@ public sealed class RpcRequestDispatcherTests
         var response = await dispatcher.DispatchAsync(request);
 
         await Assert.That(response.Success).IsTrue();
-        var result = response.Result!.Value.GetInt32();
+        var result = (int)serializer.DeserializeFragment(response.Result!.Value, typeof(int))!;
         await Assert.That(result).IsEqualTo(7);
     }
 
     [Test]
     public async Task DispatchAsync_InvocationThrows_ReturnsInvocationError()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(ThrowingServiceImpl)));
+        var (_, dispatcher, _) = BuildSut((typeof(ITestService), typeof(ThrowingServiceImpl)));
 
         var request = new RpcRequest
         {
@@ -133,7 +133,12 @@ public sealed class RpcRequestDispatcherTests
     [Test]
     public async Task DispatchAsync_BadPayloadForKnownType_ReturnsDeserializationError()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var (_, dispatcher, _) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+
+        // TestSerializer encodes payloads as "TYPE:VALUE". A bytes payload that cannot be
+        // converted to int (e.g., string text "not-a-number" without a numeric body) triggers
+        // ChangeType failure.
+        var badPayload = Encoding.UTF8.GetBytes($"{typeof(int).FullName}:not-a-number");
 
         var request = new RpcRequest
         {
@@ -144,7 +149,7 @@ public sealed class RpcRequestDispatcherTests
                 new RpcArgument
                 {
                     TypeName = Stn(typeof(int)),
-                    Payload = JsonSerializer.SerializeToElement("not-a-number", RpcJson.Options)
+                    Payload = badPayload
                 },
                 Arg(2)
             ]
@@ -159,7 +164,7 @@ public sealed class RpcRequestDispatcherTests
     [Test]
     public async Task DispatchAsync_GetUserAsync_ReturnsComplexResult()
     {
-        var (_, dispatcher) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
+        var (_, dispatcher, _) = BuildSut((typeof(ITestService), typeof(TestServiceImpl)));
         var id = Guid.NewGuid();
 
         var request = new RpcRequest

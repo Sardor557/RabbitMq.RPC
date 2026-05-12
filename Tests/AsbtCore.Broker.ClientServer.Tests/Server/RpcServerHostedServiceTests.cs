@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Internal;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,7 +32,8 @@ public class RpcServerHostedServiceTests
 
         return new RpcRequestDispatcher(
             registry,
-            sp.GetRequiredService<IServiceScopeFactory>());
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            new TestSerializer());
     }
 
     [Test]
@@ -69,5 +71,43 @@ public class RpcServerHostedServiceTests
             NullLogger<RpcServerHostedService>.Instance);
 
         await sut.StopAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task StartAsync_WhenSerializerImplementsWarmup_PrewarmsRegisteredInterfaces()
+    {
+        var registry = BuildRegistry();
+        var dispatcher = BuildDispatcher(registry);
+        var hostMock = new Mock<IRpcTransportHost>();
+        hostMock
+            .Setup(x => x.StartAsync(
+                It.IsAny<Func<RpcRequest, CancellationToken, Task<RpcResponse>>>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var serializer = new WarmupCapturingSerializer();
+        var regs = new[] { new RpcInterfaceRegistration(typeof(ITestService)) };
+
+        var sut = new RpcServerHostedService(
+            hostMock.Object, registry, dispatcher,
+            NullLogger<RpcServerHostedService>.Instance,
+            serializer,
+            regs);
+
+        await sut.StartAsync(CancellationToken.None);
+
+        await Assert.That(serializer.PrewarmedTypes).Contains(typeof(ITestService));
+    }
+
+    private sealed class WarmupCapturingSerializer : IRpcSerializer, IRpcSerializerInterfaceWarmup
+    {
+        public string ContentType => "test/warmup";
+        public List<Type> PrewarmedTypes { get; } = new();
+        public ReadOnlyMemory<byte> Serialize<T>(T value) => default;
+        public T? Deserialize<T>(ReadOnlyMemory<byte> payload) => default;
+        public ReadOnlyMemory<byte> SerializeFragment(object? value, Type type) => default;
+        public object? DeserializeFragment(ReadOnlyMemory<byte> payload, Type type) => null;
+        public void Prewarm(Type interfaceType) => PrewarmedTypes.Add(interfaceType);
     }
 }
