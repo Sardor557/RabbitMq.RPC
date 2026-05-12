@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Core.Options;
-using AsbtCore.Broker.Core.Serialization;
+using AsbtCore.Broker.Core.Tests.Fixtures;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -63,7 +63,7 @@ public class RabbitMqRpcTransportHostTests
             providerMock.Object,
             options,
             NullLogger<RabbitMqRpcTransportHost>.Instance,
-            new JsonRpcSerializer());
+            new TestJsonRpcSerializer());
 
         await sut.StartAsync(
             (_, _) => Task.FromResult(new RpcResponse { Success = true }),
@@ -137,7 +137,7 @@ public class RabbitMqRpcTransportHostTests
                 ClientProvidedName = "c", Port = 5672, PrefetchCount = 1
             }),
             NullLogger<RabbitMqRpcTransportHost>.Instance,
-            new JsonRpcSerializer());
+            new TestJsonRpcSerializer());
 
         var handler = new Func<RpcRequest, CancellationToken, Task<RpcResponse>>(
             (_, _) => Task.FromResult(new RpcResponse { Success = true }));

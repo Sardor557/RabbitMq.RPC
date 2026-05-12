@@ -1,6 +1,3 @@
-﻿using System.Text.Json;
-using System.Text.Json.Serialization;
-
 namespace AsbtCore.Broker.Core
 {
     public sealed class RpcRequest
@@ -14,12 +11,7 @@ namespace AsbtCore.Broker.Core
     public sealed class RpcArgument
     {
         public string TypeName { get; set; } = default!;
-
-        /// <summary>
-        /// Полезная нагрузка аргумента. Хранится как <see cref="JsonElement"/>,
-        /// что позволяет вкладывать её в envelope без повторного string-кодирования.
-        /// </summary>
-        public JsonElement Payload { get; set; }
+        public ReadOnlyMemory<byte> Payload { get; set; }
     }
 
     public sealed class RpcResponse
@@ -27,10 +19,7 @@ namespace AsbtCore.Broker.Core
         public string RequestId { get; set; } = default!;
         public bool Success { get; set; }
         public string? ResultTypeName { get; set; }
-
-        /// <summary>Результат вызова. Inline-JsonElement без вложенного string-кодирования.</summary>
-        public JsonElement? Result { get; set; }
-
+        public ReadOnlyMemory<byte>? Result { get; set; }
         public RpcError? Error { get; set; }
     }
 
@@ -40,15 +29,5 @@ namespace AsbtCore.Broker.Core
         public string Message { get; set; } = default!;
         public string? Details { get; set; }
         public string? ExceptionType { get; set; }
-    }
-
-    public static class RpcJson
-    {
-        public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web)
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
     }
 }

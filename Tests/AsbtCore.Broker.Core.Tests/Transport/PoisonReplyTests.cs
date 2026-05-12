@@ -4,8 +4,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Core;
+using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
-using AsbtCore.Broker.Core.Serialization;
+using AsbtCore.Broker.Core.Tests.Fixtures;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -22,7 +23,7 @@ public sealed class PoisonReplyTests
     private Mock<IChannel> publishChannelMock = null!;
     private Mock<IChannel> replyChannelMock = null!;
     private RabbitMqRpcTransport sut = null!;
-    private JsonRpcSerializer serializer = null!;
+    private TestJsonRpcSerializer serializer = null!;
 
     [After(Test)]
     public async ValueTask Cleanup() => await sut.DisposeAsync();
@@ -34,7 +35,7 @@ public sealed class PoisonReplyTests
         connectionMock = new Mock<IConnection>();
         publishChannelMock = new Mock<IChannel>();
         replyChannelMock = new Mock<IChannel>();
-        serializer = new JsonRpcSerializer();
+        serializer = new TestJsonRpcSerializer();
 
         providerMock
             .Setup(x => x.GetConnectionAsync(It.IsAny<CancellationToken>()))

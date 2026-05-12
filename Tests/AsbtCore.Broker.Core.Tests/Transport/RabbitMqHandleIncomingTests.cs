@@ -2,8 +2,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Core;
+using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
-using AsbtCore.Broker.Core.Serialization;
+using AsbtCore.Broker.Core.Tests.Fixtures;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -19,7 +20,7 @@ public sealed class RabbitMqHandleIncomingTests
     private Mock<IConnection> connectionMock = null!;
     private Mock<IChannel> channelMock = null!;
     private RabbitMqRpcTransportHost sut = null!;
-    private JsonRpcSerializer serializer = null!;
+    private TestJsonRpcSerializer serializer = null!;
 
     [After(Test)]
     public async ValueTask Cleanup() => await sut.DisposeAsync();
@@ -30,7 +31,7 @@ public sealed class RabbitMqHandleIncomingTests
         providerMock = new Mock<IRabbitMqConnectionProvider>();
         connectionMock = new Mock<IConnection>();
         channelMock = new Mock<IChannel>();
-        serializer = new JsonRpcSerializer();
+        serializer = new TestJsonRpcSerializer();
 
         providerMock
             .Setup(x => x.GetConnectionAsync(It.IsAny<CancellationToken>()))
@@ -121,7 +122,7 @@ public sealed class RabbitMqHandleIncomingTests
         });
 
         await consumer.HandleBasicDeliverAsync("tag", 1, false, "", "test.route",
-            BuildProps().Object, body.AsMemory());
+            BuildProps().Object, body);
 
         channelMock.Verify(
             x => x.BasicAckAsync(1UL, false, It.IsAny<CancellationToken>()),
@@ -140,7 +141,7 @@ public sealed class RabbitMqHandleIncomingTests
         });
 
         await consumer.HandleBasicDeliverAsync("tag", 2, false, "", "test.route",
-            BuildProps(replyTo: "amq.reply").Object, body.AsMemory());
+            BuildProps(replyTo: "amq.reply").Object, body);
 
         channelMock.Verify(
             x => x.BasicPublishAsync(
@@ -166,7 +167,7 @@ public sealed class RabbitMqHandleIncomingTests
         });
 
         await consumer.HandleBasicDeliverAsync("tag", 3, false, "", "test.route",
-            BuildProps(replyTo: null).Object, body.AsMemory());
+            BuildProps(replyTo: null).Object, body);
 
         channelMock.Verify(
             x => x.BasicPublishAsync(
@@ -218,7 +219,7 @@ public sealed class RabbitMqHandleIncomingTests
         });
 
         await consumer.HandleBasicDeliverAsync("tag", 6, false, "", "test.route",
-            BuildProps(replyTo: "amq.reply").Object, body.AsMemory());
+            BuildProps(replyTo: "amq.reply").Object, body);
 
         channelMock.Verify(
             x => x.BasicAckAsync(6UL, false, It.IsAny<CancellationToken>()),

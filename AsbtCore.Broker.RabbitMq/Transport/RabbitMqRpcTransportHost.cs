@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
-using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;

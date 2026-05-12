@@ -2,8 +2,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Core;
+using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
-using AsbtCore.Broker.Core.Serialization;
+using AsbtCore.Broker.Core.Tests.Fixtures;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -17,7 +18,7 @@ public sealed class ConsumerDispatchConcurrencyTests
     private Mock<IRabbitMqConnectionProvider> providerMock = null!;
     private Mock<IConnection> connectionMock = null!;
     private Mock<IChannel> channelMock = null!;
-    private JsonRpcSerializer serializer = null!;
+    private TestJsonRpcSerializer serializer = null!;
 
     [Before(Test)]
     public void Init()
@@ -25,7 +26,7 @@ public sealed class ConsumerDispatchConcurrencyTests
         providerMock = new Mock<IRabbitMqConnectionProvider>();
         connectionMock = new Mock<IConnection>();
         channelMock = new Mock<IChannel>();
-        serializer = new JsonRpcSerializer();
+        serializer = new TestJsonRpcSerializer();
 
         providerMock
             .Setup(x => x.GetConnectionAsync(It.IsAny<CancellationToken>()))
