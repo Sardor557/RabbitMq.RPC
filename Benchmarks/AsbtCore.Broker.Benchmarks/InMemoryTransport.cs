@@ -4,6 +4,12 @@ using AsbtCore.Broker.Server;
 
 namespace AsbtCore.Broker.Benchmarks;
 
+/// <summary>
+/// In-process transport for bench setups: routes envelopes directly to a
+/// <see cref="RpcRequestDispatcher"/> in the same process. The dispatcher
+/// owns the <see cref="IRpcSerializer"/>, so this transport only forwards
+/// the envelope unchanged.
+/// </summary>
 internal sealed class InMemoryTransport : IRpcTransport
 {
     private readonly RpcRequestDispatcher dispatcher;

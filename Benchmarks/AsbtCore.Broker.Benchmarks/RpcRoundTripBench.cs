@@ -1,6 +1,8 @@
 using AsbtCore.Broker.Client;
+using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Routing;
+using AsbtCore.Broker.Serialization.SystemTextJson;
 using AsbtCore.Broker.Server;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,14 +44,15 @@ public class RpcRoundTripBench
             HostName = "h", VirtualHost = "/", UserName = "u", Password = "p",
             ClientProvidedName = "bench", Port = 1, DefaultTimeoutSeconds = 30
         });
+        IRpcSerializer serializer = new JsonRpcSerializer();
         var resolver = new DefaultRpcRouteResolver(options);
         var registry = new RpcServerRegistry(
             new[] { new RpcServerRegistration(typeof(IBenchService), typeof(BenchService)) },
             resolver);
-        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>(), serializer);
         var transport = new InMemoryTransport(dispatcher);
-        var client = new RpcClient(transport, resolver, options);
-        var factory = new RpcProxyFactory(client, options);
+        var client = new RpcClient(transport, resolver, serializer, options);
+        var factory = new RpcProxyFactory(client, serializer, options);
         proxy = factory.CreateProxy<IBenchService>();
     }
 
