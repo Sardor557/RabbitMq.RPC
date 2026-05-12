@@ -1,4 +1,5 @@
 using System.Buffers;
+using AsbtCore.Broker.Core;
 using XPacketRpc;
 using XPacketRpc.Internal;
 
@@ -125,6 +126,174 @@ internal static class XPacketRpcPrimitives
             },
             (ref XPRpcReader r) => new ReadOnlyMemory<byte>(r.ReadBytes()));
 
+        // --- envelope DTOs (Core.RpcContracts) ---
+        //
+        // The XPacketRpc source generator cannot emit codecs for the envelope types because
+        // it has no built-in WireKind for ReadOnlyMemory<byte> (the type used by
+        // RpcArgument.Payload and RpcResponse.Result). Generated code would reference a
+        // non-existent __XPRpcGen_ReadOnlyMemory class. Furthermore, the generator only emits
+        // for types that appear in a Touch<T>() call site, and the envelope types are never
+        // touched (intentionally — this adapter owns their codecs).
+        //
+        // We hand-register them here so that the serializer's whole-envelope path
+        // (XPRpc.Write<RpcRequest>/Read<RpcResponse>) just works. Because no generator
+        // emit exists for these types, no module-initializer can later overwrite
+        // Cache<T>.Writer — our registration is the only one and wins by default.
+        //
+        // Wire formats (self-consistent: both ends are this codec, so we don't need to match
+        // any generator-produced bitmap layout — a single bool tag per nullable is enough):
+        //
+        //   RpcArgument := WriteString(TypeName) WriteBytes(Payload)
+        //   RpcError    := WriteString(Code) WriteString(Message)
+        //                  bool(Details.HasValue)      [WriteString(Details)]?
+        //                  bool(ExceptionType.HasValue)[WriteString(ExceptionType)]?
+        //   RpcRequest  := WriteString(RequestId) WriteString(InterfaceName) WriteString(MethodName)
+        //                  WriteVarUInt32(Arguments.Count) RpcArgument[Count]
+        //   RpcResponse := WriteString(RequestId) bool(Success)
+        //                  bool(ResultTypeName.HasValue)[WriteString(ResultTypeName)]?
+        //                  bool(Result.HasValue)       [WriteBytes(Result.Value)]?
+        //                  bool(Error != null)         [RpcError]?
+
+        // Local delegates captured *before* Register so nested codecs (RpcRequest -> RpcArgument)
+        // invoke directly via ref reader / writer, avoiding any reflection round-trip.
+        XPRpc.WriteDelegate<RpcArgument> writeArg = (arg, w) =>
+        {
+            Writers.WriteString(arg.TypeName ?? string.Empty, w);
+            // Reuse the ReadOnlyMemory<byte> wire format defined above.
+            var payload = arg.Payload;
+            Writers.WriteVarUInt32((uint)payload.Length, w);
+            if (payload.Length > 0)
+            {
+                var span = w.GetSpan(payload.Length);
+                payload.Span.CopyTo(span);
+                w.Advance(payload.Length);
+            }
+        };
+        XPRpc.ReadDelegate<RpcArgument> readArg = (ref XPRpcReader r) => new RpcArgument
+        {
+            TypeName = r.ReadString(),
+            Payload = new ReadOnlyMemory<byte>(r.ReadBytes()),
+        };
+        XPRpc.Register<RpcArgument>(writeArg, readArg);
+
+        XPRpc.WriteDelegate<RpcError> writeErr = (err, w) =>
+        {
+            Writers.WriteString(err.Code ?? string.Empty, w);
+            Writers.WriteString(err.Message ?? string.Empty, w);
+            WriteNullableString(err.Details, w);
+            WriteNullableString(err.ExceptionType, w);
+        };
+        XPRpc.ReadDelegate<RpcError> readErr = (ref XPRpcReader r) => new RpcError
+        {
+            Code = r.ReadString(),
+            Message = r.ReadString(),
+            Details = ReadNullableString(ref r),
+            ExceptionType = ReadNullableString(ref r),
+        };
+        XPRpc.Register<RpcError>(writeErr, readErr);
+
+        XPRpc.Register<RpcRequest>(
+            (req, w) =>
+            {
+                Writers.WriteString(req.RequestId ?? string.Empty, w);
+                Writers.WriteString(req.InterfaceName ?? string.Empty, w);
+                Writers.WriteString(req.MethodName ?? string.Empty, w);
+                var args = req.Arguments ?? new List<RpcArgument>();
+                Writers.WriteVarUInt32((uint)args.Count, w);
+                for (int i = 0; i < args.Count; i++)
+                {
+                    writeArg(args[i], w);
+                }
+            },
+            (ref XPRpcReader r) =>
+            {
+                var req = new RpcRequest
+                {
+                    RequestId = r.ReadString(),
+                    InterfaceName = r.ReadString(),
+                    MethodName = r.ReadString(),
+                };
+                uint count = r.ReadVarUInt32();
+                var list = new List<RpcArgument>((int)count);
+                for (uint i = 0; i < count; i++)
+                {
+                    list.Add(readArg(ref r));
+                }
+                req.Arguments = list;
+                return req;
+            });
+
+        XPRpc.Register<RpcResponse>(
+            (resp, w) =>
+            {
+                Writers.WriteString(resp.RequestId ?? string.Empty, w);
+                Writers.WriteByte((byte)(resp.Success ? 1 : 0), w);
+                WriteNullableString(resp.ResultTypeName, w);
+
+                if (resp.Result.HasValue)
+                {
+                    Writers.WriteByte(1, w);
+                    var payload = resp.Result.Value;
+                    Writers.WriteVarUInt32((uint)payload.Length, w);
+                    if (payload.Length > 0)
+                    {
+                        var span = w.GetSpan(payload.Length);
+                        payload.Span.CopyTo(span);
+                        w.Advance(payload.Length);
+                    }
+                }
+                else
+                {
+                    Writers.WriteByte(0, w);
+                }
+
+                if (resp.Error is not null)
+                {
+                    Writers.WriteByte(1, w);
+                    writeErr(resp.Error, w);
+                }
+                else
+                {
+                    Writers.WriteByte(0, w);
+                }
+            },
+            (ref XPRpcReader r) =>
+            {
+                var resp = new RpcResponse
+                {
+                    RequestId = r.ReadString(),
+                    Success = r.ReadByte() != 0,
+                    ResultTypeName = ReadNullableString(ref r),
+                };
+                bool hasResult = r.ReadByte() != 0;
+                if (hasResult)
+                {
+                    resp.Result = new ReadOnlyMemory<byte>(r.ReadBytes());
+                }
+                bool hasError = r.ReadByte() != 0;
+                if (hasError)
+                {
+                    resp.Error = readErr(ref r);
+                }
+                return resp;
+            });
+
         return true;
     }
+
+    private static void WriteNullableString(string? value, IBufferWriter<byte> w)
+    {
+        if (value is null)
+        {
+            Writers.WriteByte(0, w);
+        }
+        else
+        {
+            Writers.WriteByte(1, w);
+            Writers.WriteString(value, w);
+        }
+    }
+
+    private static string? ReadNullableString(ref XPRpcReader r)
+        => r.ReadByte() == 0 ? null : r.ReadString();
 }
