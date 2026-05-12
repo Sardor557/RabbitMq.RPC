@@ -2,7 +2,7 @@ using AsbtCore.Broker.Core;
 
 namespace AsbtCore.Broker.Core.Tests.Contracts;
 
-public class RpcContractsShapeTests
+public sealed class RpcContractsShapeTests
 {
     [Test]
     public async Task RpcArgument_Payload_IsReadOnlyMemoryOfByte()
@@ -21,12 +21,8 @@ public class RpcContractsShapeTests
     [Test]
     public async Task RpcRequest_DoesNotReference_JsonElement()
     {
-        var refs = typeof(RpcRequest).Assembly
-            .GetReferencedAssemblies()
-            .Select(a => a.Name)
-            .ToArray();
-        // System.Text.Json may still be transitively reachable, but RpcRequest itself
-        // must not depend on JsonElement: check no public property type lives in System.Text.Json.
+        // No public property type on the contract DTOs should live in System.Text.Json.
+        // (Transitive assembly references may still exist; this test only constrains the surface.)
         var jsonElementUsages = typeof(RpcRequest).GetProperties()
             .Concat(typeof(RpcArgument).GetProperties())
             .Concat(typeof(RpcResponse).GetProperties())
