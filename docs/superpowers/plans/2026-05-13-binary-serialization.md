@@ -53,11 +53,11 @@
 | Delete | `Tests/AsbtCore.Broker.Core.Tests/Serialization/RpcSerializationHelperTests.cs` |
 | Delete | `Tests/AsbtCore.Broker.Core.Tests/Serialization/RpcSerializationServiceCollectionExtensionsTests.cs` |
 | Move | `Tests/AsbtCore.Broker.Core.Tests/RpcRequestSerializationTests.cs` → goes to SystemTextJson.Tests in Phase 2 (delete here, Phase 2 recreates) |
-| Modify | `Tests/AsbtCore.Broker.Core.Tests/Transport/RabbitMqHandleIncomingTests.cs` (refactor payload comparisons) |
-| Modify | `Tests/AsbtCore.Broker.Core.Tests/Transport/PoisonReplyTests.cs` (refactor) |
-| Modify | `Tests/AsbtCore.Broker.Core.Tests/Transport/ConsumerDispatchConcurrencyTests.cs` (refactor if it touches payloads) |
-| Modify | `Tests/AsbtCore.Broker.Core.Tests/Transport/RabbitMqRpcTransportHostTests.cs` (refactor if it touches payloads) |
-| Modify | `Tests/AsbtCore.Broker.Core.Tests/Transport/RabbitMqRpcTransportHostShutdownTests.cs` (refactor if it touches payloads) |
+| Modify | `AsbtCore.Broker.RabbitMq/Transport/RabbitMqRpcTransport.cs` — change `using AsbtCore.Broker.Core.Serialization;` → `using AsbtCore.Broker.Core.Abstractions;` |
+| Modify | `AsbtCore.Broker.RabbitMq/Transport/RabbitMqRpcTransportHost.cs` — same `using` change |
+| Verify | `Tests/AsbtCore.Broker.Core.Tests/Transport/*Tests.cs` (5 files) — they do not reference `JsonElement`/`RpcJson` (confirmed via grep). No source edits required; they must compile + pass once RabbitMq compiles. |
+
+> **Plan erratum (corrected after Agent A's BLOCKED feedback):** `Tests/AsbtCore.Broker.Core.Tests` has a `<ProjectReference>` to `AsbtCore.Broker.RabbitMq`, and the 5 transport tests directly construct `RabbitMqRpcTransport` / `RabbitMqRpcTransportHost`. Phase 1 therefore expands minimally to also fix the two `using` lines in RabbitMq so Core.Tests builds. This is justified because the `IRpcSerializer` signature change (`byte[]` → `ReadOnlyMemory<byte>` for `Serialize<T>`) is wire-compatible with all RabbitMq call sites — `RabbitMQ.Client 7.x`'s `BasicPublishAsync` already accepts `ReadOnlyMemory<byte>`.
 
 ---
 
@@ -303,69 +303,47 @@ Note: keep `Tests/AsbtCore.Broker.Core.Tests/Serialization/StableTypeNameTests.c
 
 ---
 
-### Task 1.6: Update remaining Core.Tests transport tests to the new contract
+### Task 1.6: Fix RabbitMq `using` statements + verify transport tests pass unchanged
 
-The transport tests construct `RpcRequest` / `RpcResponse` directly and currently use `JsonElement` for `Payload`. They need to switch to `ReadOnlyMemory<byte>` and use a tiny inline helper for byte payloads.
+**Plan erratum:** Agent A's initial pass discovered that the 5 transport tests in `Core.Tests/Transport/` do not contain `JsonElement` / `RpcJson` references (`grep` returned zero matches) — they test RabbitMq transport behavior, not serialization. They need no source edits. However, `Tests/AsbtCore.Broker.Core.Tests` has a `<ProjectReference>` to `AsbtCore.Broker.RabbitMq`, whose 2 transport files reference the deleted `Core.Serialization` namespace. Phase 1 minimally fixes this so Core.Tests can build.
 
 **Files:**
-- Modify: `Tests/AsbtCore.Broker.Core.Tests/Transport/RabbitMqHandleIncomingTests.cs`
-- Modify: `Tests/AsbtCore.Broker.Core.Tests/Transport/PoisonReplyTests.cs`
-- Modify: `Tests/AsbtCore.Broker.Core.Tests/Transport/ConsumerDispatchConcurrencyTests.cs`
-- Modify: `Tests/AsbtCore.Broker.Core.Tests/Transport/RabbitMqRpcTransportHostTests.cs`
-- Modify: `Tests/AsbtCore.Broker.Core.Tests/Transport/RabbitMqRpcTransportHostShutdownTests.cs`
-- Create: `Tests/AsbtCore.Broker.Core.Tests/Fixtures/Bytes.cs` (helper)
+- Modify: `AsbtCore.Broker.RabbitMq/Transport/RabbitMqRpcTransport.cs`
+- Modify: `AsbtCore.Broker.RabbitMq/Transport/RabbitMqRpcTransportHost.cs`
 
-- [ ] **Step 1: Create the bytes helper**
+- [ ] **Step 1: Update both files' `using` statements**
 
+In each of the two RabbitMq transport files, change:
 ```csharp
-namespace AsbtCore.Broker.Core.Tests.Fixtures;
-
-internal static class Bytes
-{
-    public static ReadOnlyMemory<byte> Utf8(string s)
-        => new(System.Text.Encoding.UTF8.GetBytes(s));
-
-    public static bool SequenceEqual(ReadOnlyMemory<byte> a, ReadOnlyMemory<byte> b)
-        => a.Span.SequenceEqual(b.Span);
-}
+using AsbtCore.Broker.Core.Serialization;
+```
+to:
+```csharp
+using AsbtCore.Broker.Core.Abstractions;
 ```
 
-- [ ] **Step 2: For each transport test file, perform two mechanical replacements**
+Both files inject `IRpcSerializer` via constructor. The interface moved namespace; no other change is required at the call sites — `serializer.Serialize(request)` now returns `ReadOnlyMemory<byte>` instead of `byte[]`, but `RabbitMQ.Client 7.x`'s `BasicPublishAsync(body: ...)` already accepts `ReadOnlyMemory<byte>` (since 7.0). Variable type-inference via `var body = serializer.Serialize(...)` adapts automatically.
 
-1. Any literal `JsonElement` construction:
-   ```csharp
-   // BEFORE
-   Payload = JsonSerializer.SerializeToElement(value, RpcJson.Options)
-   // AFTER
-   Payload = Bytes.Utf8(JsonSerializer.Serialize(value))   // we still want self-contained bytes; outer JSON not needed
-   ```
-   Actually simpler — these tests don't care about the content of `Payload`, only the wire flow. Use a constant:
-   ```csharp
-   Payload = Bytes.Utf8("test-payload")
-   ```
-
-2. Any comparison via `JsonElement.GetRawText()`:
-   ```csharp
-   // BEFORE
-   await Assert.That(arg.Payload.GetRawText()).IsEqualTo("...");
-   // AFTER
-   await Assert.That(Bytes.SequenceEqual(arg.Payload, expected)).IsTrue();
-   ```
-
-3. Remove `using System.Text.Json;` after replacements compile.
-
-- [ ] **Step 3: Run all Core tests**
+- [ ] **Step 2: Build RabbitMq in isolation**
 
 ```
+dotnet build AsbtCore.Broker.RabbitMq/AsbtCore.Broker.RabbitMq.csproj
+```
+Expected: green. If you get a "cannot convert ReadOnlyMemory<byte> to byte[]" error at a call site, that means RabbitMQ.Client did NOT auto-accept. Fix it by appending `.ToArray()` to the affected call — but verify first that the call site really needs `byte[]`.
+
+- [ ] **Step 3: Build Core.Tests, then run**
+
+```
+dotnet build Tests/AsbtCore.Broker.Core.Tests/AsbtCore.Broker.Core.Tests.csproj
 dotnet run --project Tests/AsbtCore.Broker.Core.Tests/AsbtCore.Broker.Core.Tests.csproj
 ```
-Expected: PASS. Any remaining `RpcJson` reference is a compile error — track it down with `Grep "RpcJson|RpcSerializationHelper" Tests/AsbtCore.Broker.Core.Tests/`.
+Expected: all tests PASS — the 5 transport tests, the new `RpcContractsShapeTests`, `StableTypeNameTests`, and others. If any transport test fails, it indicates RabbitMq behavior changed implicitly via the signature swap — investigate that specific test (do not paper over it).
 
 - [ ] **Step 4: Commit**
 
 ```
 git add -A
-git commit -m "refactor(core)!: replace JsonElement with ReadOnlyMemory<byte> in RpcContracts; delete legacy serialization"
+git commit -m "refactor(core)!: replace JsonElement with ReadOnlyMemory<byte> in RpcContracts; delete legacy serialization; rewire RabbitMq using to Core.Abstractions"
 ```
 
 > **!** in commit type denotes breaking change per Conventional Commits.
@@ -389,13 +367,15 @@ Expected: 3 PASS.
 
 ### Phase 1 acceptance — Agent A done when:
 
-1. `dotnet build AsbtCore.Broker.Core/AsbtCore.Broker.Core.csproj --no-dependencies` is green.
-2. `dotnet run --project Tests/AsbtCore.Broker.Core.Tests/AsbtCore.Broker.Core.Tests.csproj` is green.
-3. `grep -rn "JsonElement\|RpcJson\|RpcSerializationHelper" AsbtCore.Broker.Core/` produces **zero matches**.
-4. New files exist: `Core/Abstractions/IRpcSerializer.cs`, `Core/Abstractions/IRpcSerializerInterfaceWarmup.cs`.
-5. Working tree clean, two commits on master.
+1. `dotnet build AsbtCore.Broker.Core/AsbtCore.Broker.Core.csproj --no-dependencies` — green.
+2. `dotnet build AsbtCore.Broker.RabbitMq/AsbtCore.Broker.RabbitMq.csproj` — green (after `using` fix in Task 1.6).
+3. `dotnet run --project Tests/AsbtCore.Broker.Core.Tests/AsbtCore.Broker.Core.Tests.csproj` — green.
+4. `grep -rn "JsonElement\|RpcJson\|RpcSerializationHelper" AsbtCore.Broker.Core/` — zero matches.
+5. `grep -rn "Core\.Serialization" AsbtCore.Broker.RabbitMq/` — zero matches.
+6. New files exist: `Core/Abstractions/IRpcSerializer.cs`, `Core/Abstractions/IRpcSerializerInterfaceWarmup.cs`.
+7. Working tree clean; commits on the worktree branch.
 
-**Hand-off note for Wave 2 agents:** the Client/Server/RabbitMq projects do **not** build yet — they still reference the deleted `RpcSerializationHelper` / `RpcJson`. That is expected and is the explicit scope of Agent C.
+**Hand-off note for Wave 2 agents:** `AsbtCore.Broker.Client` and `AsbtCore.Broker.Server` do **not** build yet — they still reference `RpcSerializationHelper` / `RpcJson` / `AddRpcSerialization`. That is expected and is the explicit scope of Agent C in Phase 3. `AsbtCore.Broker.RabbitMq` **does** build (fixed in Phase 1).
 
 ---
 
