@@ -2,13 +2,13 @@
 
 [Русская версия](README.ru.md)
 
-A lightweight RPC framework on top of RabbitMQ for .NET 8: type-safe contracts via C# interfaces, DI integration on client and server, JSON serialization, reply-queue pattern.
+A lightweight RPC framework on top of RabbitMQ for .NET 10: type-safe contracts via C# interfaces, DI integration on client and server, JSON serialization, reply-queue pattern, publisher confirms, per-route dead-letter queues.
 
 This repository ships two consumer-facing NuGet packages: **`AsbtCore.Broker.Client`** and **`AsbtCore.Broker.Server`**. Everything else (`Core`, `RabbitMq`) is pulled in transitively.
 
-## Installation
+---
 
-In the consuming app, install the package you need. Dependencies (`AsbtCore.Broker.Core`, `AsbtCore.Broker.RabbitMq`) are resolved automatically.
+## Installation
 
 **Client app** (calls remote services):
 
@@ -22,52 +22,94 @@ dotnet add package AsbtCore.Broker.Client
 dotnet add package AsbtCore.Broker.Server
 ```
 
-**Shared contracts project** — a plain class library with interfaces and DTOs, referenced by both sides. It does not need any `AsbtCore.Broker.*` reference.
+**Shared contracts project** — a plain class library with interfaces and DTOs, referenced by both sides. No `AsbtCore.Broker.*` reference needed there.
 
-Typical solution layout:
+---
 
+## Package structure
+
+```mermaid
+graph TD
+    subgraph public["Consumer-facing NuGet packages"]
+        CLIENT["AsbtCore.Broker.Client"]
+        SERVER["AsbtCore.Broker.Server"]
+    end
+    subgraph internal["Internal (pulled transitively)"]
+        CORE["AsbtCore.Broker.Core\nContracts · Serialization · Routing · Options"]
+        RMQ["AsbtCore.Broker.RabbitMq\nConnection · Transport · TransportHost"]
+    end
+
+    CLIENT --> CORE
+    CLIENT --> RMQ
+    SERVER --> CORE
+    SERVER --> RMQ
+    RMQ    --> CORE
+
+    style CLIENT fill:#4dabf7,color:#fff,stroke:#339af0
+    style SERVER fill:#69db7c,color:#fff,stroke:#40c057
+    style CORE   fill:#f8f9fa,stroke:#adb5bd
+    style RMQ    fill:#f8f9fa,stroke:#adb5bd
 ```
-MySolution/
-├─ MyApp.Contracts/        class library (interfaces + DTOs)
-├─ MyApp.Server/           references AsbtCore.Broker.Server + Contracts
-└─ MyApp.Client/           references AsbtCore.Broker.Client + Contracts
-```
+
+| Package | Contents |
+|---|---|
+| `AsbtCore.Broker.Core` | `RpcRequest/Response`, `IRpcTransport`, `IRpcSerializer`, `IRpcRouteResolver`, `RpcOptions`, `RpcRemoteException`, `StableTypeName` |
+| `AsbtCore.Broker.RabbitMq` | `RabbitMqRpcTransport` (client-side), `RabbitMqRpcTransportHost` (server-side), `IRabbitMqConnectionProvider` |
+| `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` / `AddRpcProxy<T>` |
+| `AsbtCore.Broker.Server` | `RpcServerBuilder`, `RpcServerRegistry`, `RpcRequestDispatcher`, `RpcServerHostedService`, DI: `AddRabbitRpcServer` |
+
+---
 
 ## Architecture
 
+### RPC call flow
+
+```mermaid
+sequenceDiagram
+    participant App  as Client App
+    participant Px   as RpcDispatchProxy
+    participant RC   as RpcClient
+    participant MQ   as RabbitMQ
+    participant Host as RpcServerHostedService
+    participant D    as RpcRequestDispatcher
+    participant Impl as ServiceImpl
+
+    App  ->> Px   : IMyService.AddAsync(a, b)
+    Px   ->> RC   : InvokeProxy(interfaceType, method, args)
+    RC   ->> MQ   : BasicPublish(RpcRequest)<br/>routingKey = rpc.IMyService<br/>replyTo = rpc-reply-{name}-{guid}
+
+    MQ   ->> Host : Deliver to request queue
+    Host ->> D    : DispatchAsync(RpcRequest)
+    D    ->> Impl : AddAsync(a, b)
+    Impl -->> D   : result
+    D    -->> Host: RpcResponse { Success=true, Result }
+
+    Host ->> MQ   : BasicPublish(RpcResponse)<br/>routingKey = replyTo<br/>correlationId = requestId
+    MQ   -->> RC  : Deliver reply
+    RC   -->> Px  : deserialized result
+    Px   -->> App : Task~int~ resolved
 ```
-┌─────────────────┐        RabbitMQ         ┌─────────────────┐
-│   Client host   │       (RPC exchange)    │   Server host   │
-│                 │                         │                 │
-│  IMyService ──► RpcProxy ──► RpcClient ──►│ request queue ──┼──► RpcRequestDispatcher
-│                                           │                 │         │
-│  result ◄── reply queue ◄── Transport ◄───┼── reply props   │         ▼
-│                                           │                 │    impl.Method(args)
-└─────────────────┘                         └─────────────────┘
+
+### Solution layout
+
+```
+RabbitMq.RPC/
+├─ AsbtCore.Broker.Core/          core contracts & serialization
+├─ AsbtCore.Broker.RabbitMq/      RabbitMQ.Client transport layer
+├─ AsbtCore.Broker.Client/        proxy factory & DI extensions
+├─ AsbtCore.Broker.Server/        dispatcher, registry & hosted service
+└─ Tests/
+   ├─ AsbtCore.Broker.Core.Tests/          45 tests  (TUnit + Moq)
+   └─ AsbtCore.Broker.ClientServer.Tests/  38 tests  (TUnit + Moq)
 ```
 
-### Packages (solution `RabbitMq.RPC.sln`)
+---
 
-| Project | Purpose |
-|---|---|
-| `AsbtCore.Broker.Core` | Contracts (`RpcRequest`/`RpcResponse`), `IRpcTransport`, `IRpcSerializer`, `IRpcRouteResolver`, `RpcOptions`, `RpcRemoteException`. |
-| `AsbtCore.Broker.RabbitMq` | `RabbitMqRpcTransport` (client side), `RabbitMqRpcTransportHost` (server side), `IRabbitMqConnectionProvider`. |
-| `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` / `AddRpcProxy<T>`. |
-| `AsbtCore.Broker.Server` | `RpcServerBuilder`, `RpcServerRegistry`, `RpcRequestDispatcher`, `RpcServerHostedService`, DI: `AddRabbitRpcServer`. |
-| `Tests/*` | MSTest + Moq: 42 tests, isolated from real RabbitMQ. |
-
-### Call flow
-
-1. Client invokes a method on the proxy → `RpcProxyFactory` packs arguments into an `RpcRequest`.
-2. `RpcClient` → `RabbitMqRpcTransport.SendAsync` publishes to the exchange using routing key `RoutePrefix + FullName(interface)`, sets `CorrelationId` and `ReplyTo` (client's exclusive queue).
-3. Server: `RpcServerHostedService` starts `IRpcTransportHost`; for each incoming message it invokes `RpcRequestDispatcher`, which looks up the implementation in `RpcServerRegistry` and calls the method via reflection.
-4. The result/exception → `RpcResponse`, published to `ReplyTo` with the same `CorrelationId`. Server exceptions surface on the client as `RpcRemoteException`.
-
-## Configuration (`RpcOptions`, section `Rpc`)
+## Configuration (`RpcOptions`, section `RabbitMqRpc`)
 
 ```json
 {
-  "Rpc": {
+  "RabbitMqRpc": {
     "HostName": "localhost",
     "Port": 5672,
     "VirtualHost": "/",
@@ -81,15 +123,17 @@ MySolution/
 }
 ```
 
-## Usage example
+---
+
+## Usage
 
 ### 1. Shared contract
 
 ```csharp
-// Contracts.csproj
+// MyApp.Contracts.csproj — no broker dependencies
 public interface ICalculatorService
 {
-    Task<int> AddAsync(int a, int b);
+    Task<int>     AddAsync(int a, int b);
     Task<UserDto> GetUserAsync(Guid id);
 }
 
@@ -99,7 +143,7 @@ public sealed record UserDto(Guid Id, string Name);
 ### 2. Server
 
 ```csharp
-// Program.cs (ASP.NET / Worker)
+// Program.cs (ASP.NET Core / Worker Service)
 using AsbtCore.Broker.Server;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -113,8 +157,8 @@ app.Run();
 
 public sealed class CalculatorService : ICalculatorService
 {
-    public Task<int> AddAsync(int a, int b) => Task.FromResult(a + b);
-    public Task<UserDto> GetUserAsync(Guid id) => Task.FromResult(new UserDto(id, "Alice"));
+    public Task<int>     AddAsync(int a, int b) => Task.FromResult(a + b);
+    public Task<UserDto> GetUserAsync(Guid id)  => Task.FromResult(new UserDto(id, "Alice"));
 }
 ```
 
@@ -132,56 +176,192 @@ builder.Services
 var host = builder.Build();
 
 var calc = host.Services.GetRequiredService<ICalculatorService>();
-var sum  = await calc.AddAsync(2, 3);         // 5
-var user = await calc.GetUserAsync(Guid.NewGuid());
+var sum  = await calc.AddAsync(2, 3);               // → 5
+var user = await calc.GetUserAsync(Guid.NewGuid()); // → UserDto
 ```
 
-## How to add RPC to your project
+---
 
-1. Create the shared `MyApp.Contracts` class library (plain, no broker references).
-2. In `MyApp.Server`: `dotnet add package AsbtCore.Broker.Server` + reference `MyApp.Contracts`.
-3. In `MyApp.Client`: `dotnet add package AsbtCore.Broker.Client` + reference `MyApp.Contracts`.
-4. Add the `Rpc` section to `appsettings.json` on both sides (see [Configuration](#configuration-rpcoptions-section-rpc)).
-5. Wire up DI (see [Usage example](#usage-example) below).
+## Error handling
+
+```mermaid
+flowchart TD
+    MSG([Incoming message]) --> DESER{Deserialize\nRpcRequest?}
+
+    DESER -->|OK| LOOKUP{Find service\n& method?}
+    DESER -->|Fail — poison| DLQ[("route.dead\n(DLQ)")]
+
+    LOOKUP -->|Found| INVOKE{Invoke\nservice impl}
+    LOOKUP -->|Not found| ERRRESP["RpcResponse\ncode: service_not_found\nor method_not_found"]
+
+    INVOKE -->|OK| SUCC["RpcResponse\nSuccess = true"]
+    INVOKE -->|Exception| INVOCERR["RpcResponse\ncode: invocation_error"]
+
+    SUCC     --> PUBLISH[Publish to replyTo]
+    ERRRESP  --> PUBLISH
+    INVOCERR --> PUBLISH
+    PUBLISH  --> ACK[BasicAck]
+    DLQ      --> ACK
+
+    style DLQ      fill:#ff6b6b,color:#fff,stroke:#e03131
+    style SUCC     fill:#69db7c,color:#fff,stroke:#2f9e44
+    style ERRRESP  fill:#ffd43b,stroke:#f08c00
+    style INVOCERR fill:#ffd43b,stroke:#f08c00
+```
+
+Server-side exceptions are serialized and rethrown on the client as `RpcRemoteException`:
+
+```csharp
+try
+{
+    var result = await calc.AddAsync(1, 2);
+}
+catch (RpcRemoteException ex)
+{
+    Console.WriteLine(ex.RemoteExceptionType); // e.g. "System.InvalidOperationException"
+    Console.WriteLine(ex.RemoteCode);          // "invocation_error"
+    Console.WriteLine(ex.RemoteDetails);       // server stack trace
+}
+catch (TaskCanceledException)
+{
+    // DefaultTimeoutSeconds exceeded
+}
+```
+
+---
+
+## Message reliability & DLQ
+
+Each RPC route gets a companion durable dead-letter queue `{route}.dead`.
+
+```mermaid
+flowchart LR
+    subgraph queues["RabbitMQ queues (per registered service)"]
+        RQ[("rpc.IMyService\n(request queue)")]
+        DQ[("rpc.IMyService.dead\n(dead-letter queue)")]
+    end
+
+    CLIENT["Client"] -->|"publish + replyTo"| RQ
+    RQ -->|healthy message| SERVER["Server\nDispatcher"]
+    SERVER -->|"BasicAck"| RQ
+    RQ -->|poison / undeliverable| DQ
+
+    SERVER -->|"reply"| REPLYQ[("rpc-reply-{name}-{guid}\n(client reply queue)")]
+    REPLYQ --> CLIENT
+
+    style RQ    fill:#4dabf7,color:#fff,stroke:#339af0
+    style DQ    fill:#ff6b6b,color:#fff,stroke:#e03131
+    style REPLYQ fill:#69db7c,color:#fff,stroke:#2f9e44
+```
+
+Poison messages (malformed payload, unresolvable type, internal dispatcher error) are moved to `*.dead` after a **single attempt** — no infinite requeue loops. Monitor `*.dead` queue depth for alerting.
+
+---
 
 ## How to add a new RPC service
 
-1. **Contract** — add the interface (`Task` / `Task<T>` methods) and DTO types to the shared `*.Contracts` project. Payloads are serialized with `System.Text.Json`.
-2. **Server** — implement the interface and register it:
+1. **Contract** — add interface (`Task` / `Task<T>` methods) + DTOs to the shared `*.Contracts` project.
+2. **Server** — implement and register:
    ```csharp
    services.AddRabbitRpcServer(configuration)
-           .Register<IMyService, MyService>();
+           .Register<IMyService, MyServiceImpl>();
    ```
 3. **Client** — register a proxy:
    ```csharp
    services.AddRabbitRpcClient(configuration)
            .AddRpcProxy<IMyService>();
    ```
-4. Client and server must use the same `RoutePrefix` and interface namespace (routing key = `RoutePrefix + typeof(T).FullName`).
+4. Both sides must use the same `RoutePrefix` and interface namespace. Routing key = `RoutePrefix + typeof(T).FullName`.
 
-## Error handling
-
-An exception thrown inside the server implementation is serialized and rethrown on the client as `RpcRemoteException`:
-
-```csharp
-try { await calc.AddAsync(1, 2); }
-catch (RpcRemoteException ex)
-{
-    // ex.RemoteExceptionType, ex.RemoteCode, ex.RemoteDetails
-}
-```
-
-Timeout: `DefaultTimeoutSeconds` → `TaskCanceledException`.
+---
 
 ## Testing
 
+Tests use **TUnit** + **Moq** and run without a real RabbitMQ broker.
+
 ```bash
-dotnet test RabbitMq.RPC.sln
+dotnet run --project Tests/AsbtCore.Broker.Core.Tests/AsbtCore.Broker.Core.Tests.csproj
+dotnet run --project Tests/AsbtCore.Broker.ClientServer.Tests/AsbtCore.Broker.ClientServer.Tests.csproj
 ```
 
-42 tests (Core.Tests — serialization / routing / transport via mocked `IChannel`; ClientServer.Tests — RpcClient / Proxy / Registry / Dispatcher / HostedService). No real RabbitMQ connection required.
+**83 tests** — 45 in `Core.Tests`, 38 in `ClientServer.Tests`.
+
+Coverage (unit tests only, no real broker):
+
+```mermaid
+xychart-beta horizontal
+    title "Line coverage by package"
+    x-axis ["Core", "Client", "Server", "RabbitMq*"]
+    y-axis "%" 0 --> 100
+    bar [100, 97, 95, 41]
+```
+
+> \* RabbitMq transport classes (`RabbitMqRpcTransport`, `RabbitMqConnectionProvider`) require a live broker; remaining coverage is integration-test territory.
+
+---
 
 ## Requirements
 
-- .NET 8
-- RabbitMQ 3.12+ (RabbitMQ.Client 7.x)
+- .NET 10
+- RabbitMQ 3.12+ / RabbitMQ.Client 7.x
+
+---
+
+## Migration v2 → v3
+
+v3.0.0 is a reliability-focused release with **breaking wire and behavior changes**. v2.x and v3.x are **not interoperable** — upgrade clients and servers in lockstep.
+
+### Wire-format change
+
+Parameter and result type names on the wire now use the stable form `Namespace.TypeName, AssemblySimpleName`, dropping `Version`, `Culture`, and `PublicKeyToken`. Routine version bumps of contract assemblies no longer break the wire format.
+
+A v2 client **cannot** talk to a v3 server (and vice versa) — the server's method-key lookup will fail with `method_not_found`.
+
+### Behavior changes
+
+```mermaid
+graph LR
+    subgraph v2["v2 behavior"]
+        V2A["Broker reconnects\n→ pending tasks hang\nuntil process exit"]
+        V2B["Broker nacks publish\n→ TaskCanceledException\nafter full timeout"]
+        V2C["Poison message\n→ BasicNack(requeue:true)\n→ infinite loop"]
+        V2D["Reply queue\namq.gen-* pattern"]
+    end
+    subgraph v3["v3 behavior"]
+        V3A["Broker reconnects\n→ TransportReconnectedException\n(immediate, retryable)"]
+        V3B["Broker nacks publish\n→ RpcPublishFailedException\n(immediate)"]
+        V3C["Poison message\n→ route.dead DLQ\n(single attempt)"]
+        V3D["Reply queue\nrpc-reply-{name}-{guid}"]
+    end
+
+    V2A -.->|upgraded to| V3A
+    V2B -.->|upgraded to| V3B
+    V2C -.->|upgraded to| V3C
+    V2D -.->|upgraded to| V3D
+
+    style V3A fill:#69db7c,color:#fff,stroke:#2f9e44
+    style V3B fill:#69db7c,color:#fff,stroke:#2f9e44
+    style V3C fill:#69db7c,color:#fff,stroke:#2f9e44
+    style V3D fill:#69db7c,color:#fff,stroke:#2f9e44
+    style V2A fill:#ff6b6b,color:#fff,stroke:#e03131
+    style V2B fill:#ff6b6b,color:#fff,stroke:#e03131
+    style V2C fill:#ff6b6b,color:#fff,stroke:#e03131
+    style V2D fill:#ff6b6b,color:#fff,stroke:#e03131
+```
+
+### Operator action items
+
+1. Upgrade client and server packages **in lockstep**.
+2. Expect new queues `*.dead` per RPC route in your broker — set TTL/max-length policies as needed.
+3. Add `catch (TransportReconnectedException)` and/or `catch (RpcPublishFailedException)` where proxy methods are awaited.
+4. Update monitoring filters that matched the old `amq.gen-*` reply-queue pattern.
+
+---
+
+## Migration v3.0 → v3.1
+
+- **Server-side message dispatch is now parallel by default.** `RpcOptions.ConsumerDispatchConcurrency` defaults to `PrefetchCount`. Existing handlers must be thread-safe. Set `RpcOptions.ConsumerDispatchConcurrency = 1` to retain the v3.0 sequential behavior.
+- `IRpcTransportHost.StopAsync(CancellationToken)` was added as a default interface method. Custom transports should override it to drain in-flight handlers before disposal.
+- `IRpcTransportHost.Dispose()` is now a sync-over-async last-resort path. Prefer `DisposeAsync()` (or let DI dispose the host).
+- `RpcRequest.RequestId` is no longer auto-initialized in the property initializer. Client code that constructs `RpcRequest` directly must set `RequestId` explicitly.
+- Poison reply handling: `OnResponseReceivedAsync` now surfaces deserialization errors to the awaiting caller instead of silently logging and waiting for the per-call timeout.

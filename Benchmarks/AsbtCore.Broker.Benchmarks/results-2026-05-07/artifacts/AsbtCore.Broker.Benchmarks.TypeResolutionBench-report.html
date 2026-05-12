@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AsbtCore.Broker.Benchmarks.TypeResolutionBench-20260507-174425</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
+Unknown processor
+.NET SDK 10.0.203
+  [Host]   : .NET 10.0.7 (10.0.726.21808), X64 RyuJIT AVX2
+  ShortRun : .NET 10.0.7 (10.0.726.21808), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>Calls</th><th>Mode</th><th>Mean   </th><th>Error   </th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>Resolve</td><td>1</td><td>Legacy</td><td>960.11 ns</td><td>209.819 ns</td><td>11.501 ns</td><td>0.0343</td><td>-</td><td>-</td><td>800 B</td>
+</tr><tr><td>Resolve</td><td>1</td><td>New</td><td>16.39 ns</td><td>9.224 ns</td><td>0.506 ns</td><td>-</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>Resolve</td><td>10</td><td>Legacy</td><td>10,277.11 ns</td><td>837.956 ns</td><td>45.931 ns</td><td>0.1373</td><td>-</td><td>-</td><td>8000 B</td>
+</tr><tr><td>Resolve</td><td>10</td><td>New</td><td>168.24 ns</td><td>12.269 ns</td><td>0.673 ns</td><td>-</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>Resolve</td><td>1000</td><td>Legacy</td><td>980,967.40 ns</td><td>179,804.099 ns</td><td>9,855.669 ns</td><td>77.1484</td><td>1.9531</td><td>1.9531</td><td>-</td>
+</tr><tr><td>Resolve</td><td>1000</td><td>New</td><td>15,866.29 ns</td><td>1,387.818 ns</td><td>76.071 ns</td><td>-</td><td>-</td><td>-</td><td>-</td>
+</tr></tbody></table>
+</body>
+</html>

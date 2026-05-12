@@ -66,7 +66,7 @@ namespace AsbtCore.Broker.RabbitMq.Transport
                 Password = vars.Password,
                 ClientProvidedName = vars.ClientProvidedName,
                 AutomaticRecoveryEnabled = true,
-                TopologyRecoveryEnabled = false
+                TopologyRecoveryEnabled = true
             };
 
             logger.LogInformation(
