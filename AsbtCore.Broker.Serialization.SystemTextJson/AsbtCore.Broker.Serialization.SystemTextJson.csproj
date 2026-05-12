@@ -32,6 +32,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AsbtCore.Broker.Core\AsbtCore.Broker.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\AsbtCore.Broker.Client\AsbtCore.Broker.Client.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\AsbtCore.Broker.Server\AsbtCore.Broker.Server.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
