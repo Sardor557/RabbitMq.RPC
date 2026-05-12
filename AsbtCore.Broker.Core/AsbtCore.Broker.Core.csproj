@@ -21,6 +21,11 @@
     <InternalsVisibleTo Include="AsbtCore.Broker.Server" />
     <InternalsVisibleTo Include="AsbtCore.Broker.RabbitMq" />
     <InternalsVisibleTo Include="AsbtCore.Broker.Benchmarks" />
+    <PackageReference Include="Google.Protobuf" Version="3.34.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
   </ItemGroup>
 
 </Project>
