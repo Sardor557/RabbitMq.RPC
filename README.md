@@ -34,8 +34,12 @@ graph TD
         CLIENT["AsbtCore.Broker.Client"]
         SERVER["AsbtCore.Broker.Server"]
     end
+    subgraph adapters["Serialization adapters (pick one)"]
+        XPRPC["AsbtCore.Broker.Serialization.XPacketRpc\nBinary, default since v4.0"]
+        STJ["AsbtCore.Broker.Serialization.SystemTextJson\nJSON, v3-compat shape"]
+    end
     subgraph internal["Internal (pulled transitively)"]
-        CORE["AsbtCore.Broker.Core\nContracts · Serialization · Routing · Options"]
+        CORE["AsbtCore.Broker.Core\nContracts · IRpcSerializer · Routing · Options"]
         RMQ["AsbtCore.Broker.RabbitMq\nConnection · Transport · TransportHost"]
     end
 
@@ -44,9 +48,13 @@ graph TD
     SERVER --> CORE
     SERVER --> RMQ
     RMQ    --> CORE
+    XPRPC  --> CORE
+    STJ    --> CORE
 
     style CLIENT fill:#4dabf7,color:#fff,stroke:#339af0
     style SERVER fill:#69db7c,color:#fff,stroke:#40c057
+    style XPRPC  fill:#ffd43b,stroke:#f08c00
+    style STJ    fill:#ffd43b,stroke:#f08c00
     style CORE   fill:#f8f9fa,stroke:#adb5bd
     style RMQ    fill:#f8f9fa,stroke:#adb5bd
 ```
@@ -55,8 +63,10 @@ graph TD
 |---|---|
 | `AsbtCore.Broker.Core` | `RpcRequest/Response`, `IRpcTransport`, `IRpcSerializer`, `IRpcRouteResolver`, `RpcOptions`, `RpcRemoteException`, `StableTypeName` |
 | `AsbtCore.Broker.RabbitMq` | `RabbitMqRpcTransport` (client-side), `RabbitMqRpcTransportHost` (server-side), `IRabbitMqConnectionProvider` |
-| `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` / `AddRpcProxy<T>` |
+| `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` (returns `RpcClientBuilder`) / `RpcClientBuilder.AddProxy<T>()` |
 | `AsbtCore.Broker.Server` | `RpcServerBuilder`, `RpcServerRegistry`, `RpcRequestDispatcher`, `RpcServerHostedService`, DI: `AddRabbitRpcServer` |
+| `AsbtCore.Broker.Serialization.XPacketRpc` | `XPacketRpcSerializer` (binary), `UseXPacketRpcSerialization()` DI extension. **Default since v4.0.** |
+| `AsbtCore.Broker.Serialization.SystemTextJson` | `JsonRpcSerializer`, `UseJsonRpcSerialization()` DI extension. Drop-in shape for v3 JSON wire. |
 
 ---
 
@@ -94,13 +104,17 @@ sequenceDiagram
 
 ```
 RabbitMq.RPC/
-├─ AsbtCore.Broker.Core/          core contracts & serialization
-├─ AsbtCore.Broker.RabbitMq/      RabbitMQ.Client transport layer
-├─ AsbtCore.Broker.Client/        proxy factory & DI extensions
-├─ AsbtCore.Broker.Server/        dispatcher, registry & hosted service
+├─ AsbtCore.Broker.Core/                            core contracts & IRpcSerializer
+├─ AsbtCore.Broker.RabbitMq/                        RabbitMQ.Client transport layer
+├─ AsbtCore.Broker.Client/                          proxy factory, RpcClientBuilder & DI
+├─ AsbtCore.Broker.Server/                          dispatcher, registry, RpcServerBuilder
+├─ AsbtCore.Broker.Serialization.XPacketRpc/        binary IRpcSerializer adapter (default)
+├─ AsbtCore.Broker.Serialization.SystemTextJson/    JSON IRpcSerializer adapter (v3-compat)
 └─ Tests/
-   ├─ AsbtCore.Broker.Core.Tests/          45 tests  (TUnit + Moq)
-   └─ AsbtCore.Broker.ClientServer.Tests/  38 tests  (TUnit + Moq)
+   ├─ AsbtCore.Broker.Core.Tests/
+   ├─ AsbtCore.Broker.ClientServer.Tests/
+   ├─ AsbtCore.Broker.Serialization.SystemTextJson.Tests/
+   └─ AsbtCore.Broker.Serialization.XPacketRpc.Tests/
 ```
 
 ---
@@ -145,11 +159,13 @@ public sealed record UserDto(Guid Id, string Name);
 ```csharp
 // Program.cs (ASP.NET Core / Worker Service)
 using AsbtCore.Broker.Server;
+using AsbtCore.Broker.Serialization.XPacketRpc;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .AddRabbitRpcServer(builder.Configuration)
+    .UseXPacketRpcSerialization()                   // <-- required since v4.0
     .Register<ICalculatorService, CalculatorService>();
 
 var app = builder.Build();
@@ -162,16 +178,23 @@ public sealed class CalculatorService : ICalculatorService
 }
 ```
 
+> The DTOs (`UserDto`, etc.) must be reachable by the XPacketRpc source generator. In your
+> contracts project, reference `XPacketRpc.Generators` as an analyzer and call
+> `XPRpc.Touch<T>()` once per DTO from a `[ModuleInitializer]`. JSON users (the
+> `.UseJsonRpcSerialization()` adapter) need none of that.
+
 ### 3. Client
 
 ```csharp
 using AsbtCore.Broker.Client;
+using AsbtCore.Broker.Serialization.XPacketRpc;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services
     .AddRabbitRpcClient(builder.Configuration)
-    .AddRpcProxy<ICalculatorService>();
+    .UseXPacketRpcSerialization()                   // <-- required since v4.0
+    .AddProxy<ICalculatorService>();                // <-- was AddRpcProxy<T> in v3
 
 var host = builder.Build();
 
@@ -264,12 +287,14 @@ Poison messages (malformed payload, unresolvable type, internal dispatcher error
 2. **Server** — implement and register:
    ```csharp
    services.AddRabbitRpcServer(configuration)
+           .UseXPacketRpcSerialization()
            .Register<IMyService, MyServiceImpl>();
    ```
 3. **Client** — register a proxy:
    ```csharp
    services.AddRabbitRpcClient(configuration)
-           .AddRpcProxy<IMyService>();
+           .UseXPacketRpcSerialization()
+           .AddProxy<IMyService>();
    ```
 4. Both sides must use the same `RoutePrefix` and interface namespace. Routing key = `RoutePrefix + typeof(T).FullName`.
 
@@ -365,3 +390,82 @@ graph LR
 - `IRpcTransportHost.Dispose()` is now a sync-over-async last-resort path. Prefer `DisposeAsync()` (or let DI dispose the host).
 - `RpcRequest.RequestId` is no longer auto-initialized in the property initializer. Client code that constructs `RpcRequest` directly must set `RequestId` explicitly.
 - Poison reply handling: `OnResponseReceivedAsync` now surfaces deserialization errors to the awaiting caller instead of silently logging and waiting for the per-call timeout.
+
+---
+
+## Migration v3.1 → v4.0
+
+v4.0 introduces a pluggable serialization layer and ships a binary wire format by default. **The wire format is incompatible with v3.x — roll forward client and server together.** Drain `rpc.*` queues to zero, or plan a downtime window before swapping deployments.
+
+### What changed
+
+1. **Wire format is binary by default.** v3.x clients cannot talk to v4 servers (and vice versa) regardless of adapter choice — the framing changed.
+2. **A serialization adapter package is now required.** Install **one** of:
+   - `RabbitRpc.Serialization.XPacketRpc` — binary, recommended for new and high-throughput deployments.
+   - `RabbitRpc.Serialization.SystemTextJson` — JSON-on-the-wire (compatible shape with v3 payloads). Choose this when you cannot retire v3 producers/consumers immediately and need a faithful JSON behavior.
+3. **A new DI call is mandatory.** Add `.UseXPacketRpcSerialization()` or `.UseJsonRpcSerialization()` to your builder. Startup throws `OptionsValidationException` if no `IRpcSerializer` is registered.
+4. **`AddRabbitRpcClient(cfg)` returns `RpcClientBuilder`**, not `IServiceCollection`. Chain `.UseXPacketRpcSerialization()` then `.AddProxy<T>()` (the v3 `AddRpcProxy<T>()` extension was removed).
+5. **Core types removed**: `AsbtCore.Broker.Core.Serialization.{JsonRpcSerializer, RpcJson, RpcSerializationHelper, AddRpcSerialization}`. They moved to the SystemTextJson adapter; the new namespace is `AsbtCore.Broker.Serialization.SystemTextJson`.
+6. **`RpcRequest.Arguments[i].Payload`**: `JsonElement` → `ReadOnlyMemory<byte>`. Only affects code that builds `RpcRequest` directly (custom transports).
+7. **`RpcResponse.Result`**: `JsonElement?` → `ReadOnlyMemory<byte>?`.
+8. **`IRpcSerializer` widened** to four methods (`SerializeEnvelope` / `DeserializeEnvelope` over `RpcRequest`/`RpcResponse`, plus `SerializeFragment` / `DeserializeFragment` over per-arg payloads). Custom implementations must update.
+
+### Before → after
+
+```csharp
+// v3.1
+services.AddRpcSerialization<JsonRpcSerializer>();          // namespace AsbtCore.Broker.Core.Serialization (gone)
+services.AddRabbitRpcClient(configuration)
+        .AddRpcProxy<IMyService>();                         // returned IServiceCollection
+```
+
+```csharp
+// v4.0 — binary (recommended)
+services.AddRabbitRpcClient(configuration)                  // now returns RpcClientBuilder
+        .UseXPacketRpcSerialization()
+        .AddProxy<IMyService>();
+```
+
+```csharp
+// v4.0 — JSON drop-in
+services.AddRabbitRpcClient(configuration)
+        .UseJsonRpcSerialization()
+        .AddProxy<IMyService>();
+```
+
+### DTO setup for the XPacketRpc adapter
+
+The binary adapter relies on a Roslyn source generator that emits per-DTO codecs at compile time. The generator only sees DTOs reachable from a `XPRpc.Touch<T>()` call site in the **same compilation** as the DTO. In your shared contracts project:
+
+1. Reference the generator package as an analyzer:
+   ```xml
+   <ProjectReference Include="..\.external\XProtokol\XPacketRpc\XPacketRpc.csproj" />
+   <ProjectReference Include="..\.external\XProtokol\XPacketRpc.Generators\XPacketRpc.Generators.csproj"
+                     OutputItemType="Analyzer"
+                     ReferenceOutputAssembly="false" />
+   ```
+2. Touch every DTO from a module initializer:
+   ```csharp
+   using System.Runtime.CompilerServices;
+   using XPacketRpc;
+
+   internal static class GeneratorTouchSites
+   {
+       [ModuleInitializer]
+       internal static void TouchAll()
+       {
+           XPRpc.Touch<UserDto>();
+           XPRpc.Touch<OrderDto>();
+       }
+   }
+   ```
+
+The JSON adapter has no equivalent step — `System.Text.Json` reflects DTOs at runtime.
+
+### Operator action items
+
+1. Upgrade client and server packages **in lockstep**. Drain queues or accept a downtime window.
+2. Add the adapter `PackageReference` and the `.UseXPacketRpcSerialization()` / `.UseJsonRpcSerialization()` DI call to every entry point.
+3. Rename `AddRpcProxy<T>()` to `.AddProxy<T>()` and ensure it chains off the builder returned by `AddRabbitRpcClient(cfg)`.
+4. If you chose the XPacketRpc adapter, configure your contracts project per the snippet above.
+5. Custom `IRpcSerializer` implementations must implement the new four-method surface; switch any `JsonElement` payload handling to `ReadOnlyMemory<byte>`.

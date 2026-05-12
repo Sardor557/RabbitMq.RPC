@@ -1,9 +1,26 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <!--
+    The XPacketRpc source generator emits codecs at compile time for every closed-generic
+    'XPRpc.Touch<T>()' call site it sees in the compilation. DTOs in this project ride the
+    wire via the XPacketRpc adapter (registered by the demo apps), so the generator must
+    visit THIS compilation. That requires:
+      1) A ProjectReference to XPacketRpc (runtime API: 'XPRpc.Touch<T>').
+      2) The Generators csproj referenced as an Analyzer.
+      3) A module-initializer that names every DTO via Touch<T>.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\.external\XProtokol\XPacketRpc\XPacketRpc.csproj" />
+    <ProjectReference Include="..\.external\XProtokol\XPacketRpc.Generators\XPacketRpc.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
 
 </Project>

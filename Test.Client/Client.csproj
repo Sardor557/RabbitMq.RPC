@@ -33,6 +33,14 @@
   <ItemGroup>
     <ProjectReference Include="..\AsbtCore.Broker.Client\AsbtCore.Broker.Client.csproj" />
     <ProjectReference Include="..\AsbtCore.Broker.RabbitMq\AsbtCore.Broker.RabbitMq.csproj" />
+    <!--
+      The XPacketRpc adapter exposes both 'UseXPacketRpcSerialization(RpcClientBuilder)' and the
+      RpcServerBuilder overload from the same static class, so the compiler needs metadata for
+      'RpcServerBuilder' even on the client side. The adapter pins Client / Server with
+      'PrivateAssets="all"' for clean packaging, so consumers must add an explicit reference.
+    -->
+    <ProjectReference Include="..\AsbtCore.Broker.Server\AsbtCore.Broker.Server.csproj" />
+    <ProjectReference Include="..\AsbtCore.Broker.Serialization.XPacketRpc\AsbtCore.Broker.Serialization.XPacketRpc.csproj" />
     <ProjectReference Include="..\Test.Contracts\Contracts.csproj" />
   </ItemGroup>
 

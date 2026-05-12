@@ -11,6 +11,8 @@
                 <ModulePath>.*AsbtCore\.Broker\.Client\.dll$</ModulePath>
                 <ModulePath>.*AsbtCore\.Broker\.Server\.dll$</ModulePath>
                 <ModulePath>.*AsbtCore\.Broker\.RabbitMq\.dll$</ModulePath>
+                <ModulePath>.*AsbtCore\.Broker\.Serialization\.SystemTextJson\.dll$</ModulePath>
+                <ModulePath>.*AsbtCore\.Broker\.Serialization\.XPacketRpc\.dll$</ModulePath>
               </Include>
               <Exclude>
                 <ModulePath>.*Tests.*</ModulePath>

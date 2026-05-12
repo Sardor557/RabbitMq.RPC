@@ -1,6 +1,6 @@
 ﻿using AsbtCore.Broker.Client;
-using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Demo.Contracts;
+using AsbtCore.Broker.Serialization.XPacketRpc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -21,10 +21,10 @@ namespace AsbtCore.Broker.Demo.Client
                     .Enrich.FromLogContext();
             });
 
-            builder.Services.AddRpcSerialization<JsonRpcSerializer>();  
             builder.Services
                 .AddRabbitRpcClient(builder.Configuration)
-                .AddRpcProxy<IUserService>();
+                .UseXPacketRpcSerialization()
+                .AddProxy<IUserService>();
 
             using var host = builder.Build();
 

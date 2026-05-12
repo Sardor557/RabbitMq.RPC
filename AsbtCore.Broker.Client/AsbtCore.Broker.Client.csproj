@@ -9,13 +9,20 @@
 		<Description>Client-side RabbitMQ RPC package with DI integration and typed proxies.</Description>
 		<PackageTags>rabbitmq;rpc;dotnet;di</PackageTags>
 
-		<Version>3.1.0</Version>
-		<PackageReleaseNotes>v3.1.0 — Reliability + throughput patch.
-- Fix: poison reply no longer leaks pending TCS (caller fails fast).
-- Fix: graceful shutdown drains in-flight handlers and BasicCancels consumers.
-- Fix: RpcRequest.RequestId no longer auto-allocated on server deserialize.
-- Feat: ConsumerDispatchConcurrency option (defaults to PrefetchCount) — handlers must be thread-safe.
-See README "Migration v3.0 → v3.1".</PackageReleaseNotes>
+		<Version>4.0.0</Version>
+		<PackageReleaseNotes>v4.0.0 — Binary serialization. BREAKING CHANGE.
+- Wire format is incompatible with v3.x. Roll forward client and server together.
+- A serialization adapter package is now REQUIRED: install either
+  RabbitRpc.Serialization.XPacketRpc (binary, default) or
+  RabbitRpc.Serialization.SystemTextJson (JSON, drop-in v3 compat shape).
+- DI now requires '.UseXPacketRpcSerialization()' / '.UseJsonRpcSerialization()' on
+  the builder returned by 'AddRabbitRpcClient(cfg)'. Startup throws if missing.
+- 'AddRabbitRpcClient(cfg)' returns 'RpcClientBuilder'. Proxies register via
+  '.AddProxy&lt;T&gt;()' (previously '.AddRpcProxy&lt;T&gt;()').
+- 'RpcRequest.Arguments[i].Payload' / 'RpcResponse.Result' changed from
+  'JsonElement' to 'ReadOnlyMemory&lt;byte&gt;'.
+- 'IRpcSerializer' surface widened to four methods. Custom implementations must update.
+See README "Migration v3.1 → v4.0".</PackageReleaseNotes>
 		<Authors>AsbtCore</Authors>
 		<Company>AsbtCore</Company>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>

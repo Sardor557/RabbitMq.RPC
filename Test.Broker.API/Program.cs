@@ -1,6 +1,6 @@
 using AsbtCore.Broker.API.Services;
-using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Demo.Contracts;
+using AsbtCore.Broker.Serialization.XPacketRpc;
 using AsbtCore.Broker.Server;
 using Microsoft.AspNetCore.HttpOverrides;
 using Newtonsoft.Json.Serialization;
@@ -55,8 +55,8 @@ namespace AsbtCore.Broker.API
             builder.Services.AddMemoryCache();
             builder.Services.AddHttpContextAccessor();
 
-            builder.Services.AddRpcSerialization<JsonRpcSerializer> ();
             builder.Services.AddRabbitRpcServer(builder.Configuration)
+                .UseXPacketRpcSerialization()
                 .Register<IUserService, UserService>(ServiceLifetime.Scoped);
 
 

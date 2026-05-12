@@ -34,8 +34,12 @@ graph TD
         CLIENT["AsbtCore.Broker.Client"]
         SERVER["AsbtCore.Broker.Server"]
     end
+    subgraph adapters["Адаптеры сериализации (выберите один)"]
+        XPRPC["AsbtCore.Broker.Serialization.XPacketRpc\nБинарный, по умолчанию с v4.0"]
+        STJ["AsbtCore.Broker.Serialization.SystemTextJson\nJSON, v3-совместимый формат"]
+    end
     subgraph internal["Внутренние (подтягиваются транзитивно)"]
-        CORE["AsbtCore.Broker.Core\nКонтракты · Сериализация · Маршрутизация · Опции"]
+        CORE["AsbtCore.Broker.Core\nКонтракты · IRpcSerializer · Маршрутизация · Опции"]
         RMQ["AsbtCore.Broker.RabbitMq\nСоединение · Transport · TransportHost"]
     end
 
@@ -44,9 +48,13 @@ graph TD
     SERVER --> CORE
     SERVER --> RMQ
     RMQ    --> CORE
+    XPRPC  --> CORE
+    STJ    --> CORE
 
     style CLIENT fill:#4dabf7,color:#fff,stroke:#339af0
     style SERVER fill:#69db7c,color:#fff,stroke:#40c057
+    style XPRPC  fill:#ffd43b,stroke:#f08c00
+    style STJ    fill:#ffd43b,stroke:#f08c00
     style CORE   fill:#f8f9fa,stroke:#adb5bd
     style RMQ    fill:#f8f9fa,stroke:#adb5bd
 ```
@@ -55,8 +63,10 @@ graph TD
 |---|---|
 | `AsbtCore.Broker.Core` | `RpcRequest/Response`, `IRpcTransport`, `IRpcSerializer`, `IRpcRouteResolver`, `RpcOptions`, `RpcRemoteException`, `StableTypeName` |
 | `AsbtCore.Broker.RabbitMq` | `RabbitMqRpcTransport` (клиент), `RabbitMqRpcTransportHost` (сервер), `IRabbitMqConnectionProvider` |
-| `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` / `AddRpcProxy<T>` |
+| `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` (возвращает `RpcClientBuilder`) / `RpcClientBuilder.AddProxy<T>()` |
 | `AsbtCore.Broker.Server` | `RpcServerBuilder`, `RpcServerRegistry`, `RpcRequestDispatcher`, `RpcServerHostedService`, DI: `AddRabbitRpcServer` |
+| `AsbtCore.Broker.Serialization.XPacketRpc` | `XPacketRpcSerializer` (бинарный), DI-расширение `UseXPacketRpcSerialization()`. **По умолчанию с v4.0.** |
+| `AsbtCore.Broker.Serialization.SystemTextJson` | `JsonRpcSerializer`, DI-расширение `UseJsonRpcSerialization()`. Drop-in shape для v3 JSON-провода. |
 
 ---
 
@@ -94,13 +104,17 @@ sequenceDiagram
 
 ```
 RabbitMq.RPC/
-├─ AsbtCore.Broker.Core/          базовые контракты и сериализация
-├─ AsbtCore.Broker.RabbitMq/      транспортный слой RabbitMQ.Client
-├─ AsbtCore.Broker.Client/        фабрика прокси и DI-расширения
-├─ AsbtCore.Broker.Server/        диспетчер, реестр и hosted service
+├─ AsbtCore.Broker.Core/                            базовые контракты и IRpcSerializer
+├─ AsbtCore.Broker.RabbitMq/                        транспортный слой RabbitMQ.Client
+├─ AsbtCore.Broker.Client/                          фабрика прокси, RpcClientBuilder и DI
+├─ AsbtCore.Broker.Server/                          диспетчер, реестр, RpcServerBuilder
+├─ AsbtCore.Broker.Serialization.XPacketRpc/        бинарный IRpcSerializer-адаптер (по умолчанию)
+├─ AsbtCore.Broker.Serialization.SystemTextJson/    JSON IRpcSerializer-адаптер (v3-compat)
 └─ Tests/
-   ├─ AsbtCore.Broker.Core.Tests/          45 тестов  (TUnit + Moq)
-   └─ AsbtCore.Broker.ClientServer.Tests/  38 тестов  (TUnit + Moq)
+   ├─ AsbtCore.Broker.Core.Tests/
+   ├─ AsbtCore.Broker.ClientServer.Tests/
+   ├─ AsbtCore.Broker.Serialization.SystemTextJson.Tests/
+   └─ AsbtCore.Broker.Serialization.XPacketRpc.Tests/
 ```
 
 ---
@@ -145,11 +159,13 @@ public sealed record UserDto(Guid Id, string Name);
 ```csharp
 // Program.cs (ASP.NET Core / Worker Service)
 using AsbtCore.Broker.Server;
+using AsbtCore.Broker.Serialization.XPacketRpc;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .AddRabbitRpcServer(builder.Configuration)
+    .UseXPacketRpcSerialization()                   // <-- обязательно с v4.0
     .Register<ICalculatorService, CalculatorService>();
 
 var app = builder.Build();
@@ -162,16 +178,23 @@ public sealed class CalculatorService : ICalculatorService
 }
 ```
 
+> DTO (`UserDto`, и т.п.) должны быть видны генератору XPacketRpc. В проекте контрактов
+> сошлитесь на `XPacketRpc.Generators` как на analyzer и вызовите `XPRpc.Touch<T>()`
+> один раз на каждый DTO из `[ModuleInitializer]`. JSON-пользователи (адаптер
+> `.UseJsonRpcSerialization()`) этого делать не должны — STJ рефлектит DTO в рантайме.
+
 ### 3. Клиент
 
 ```csharp
 using AsbtCore.Broker.Client;
+using AsbtCore.Broker.Serialization.XPacketRpc;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services
     .AddRabbitRpcClient(builder.Configuration)
-    .AddRpcProxy<ICalculatorService>();
+    .UseXPacketRpcSerialization()                   // <-- обязательно с v4.0
+    .AddProxy<ICalculatorService>();                // <-- в v3 был AddRpcProxy<T>
 
 var host = builder.Build();
 
@@ -365,3 +388,82 @@ graph LR
 - `IRpcTransportHost.Dispose()` теперь sync-over-async last-resort путь. Предпочитайте `DisposeAsync()` (или disposal через DI).
 - `RpcRequest.RequestId` больше не инициализируется автоматически в property initializer. Клиентский код, конструирующий `RpcRequest` напрямую, должен задавать `RequestId` явно.
 - Обработка poison reply: `OnResponseReceivedAsync` теперь пробрасывает ошибки десериализации в ожидающий caller вместо тихого логирования и ожидания timeout.
+
+---
+
+## Миграция v3.1 → v4.0
+
+v4.0 вводит подключаемый слой сериализации и поставляет бинарный wire-формат по умолчанию. **Wire-формат несовместим с v3.x — обновляйте клиент и сервер вместе.** Дренируйте очереди `rpc.*` до нуля или запланируйте окно даунтайма перед обменом деплоев.
+
+### Что изменилось
+
+1. **Wire-формат бинарный по умолчанию.** Клиенты v3.x не могут общаться с серверами v4 (и наоборот) вне зависимости от выбора адаптера — фрейминг сменился.
+2. **Adapter-пакет сериализации теперь обязателен.** Установите **один** из:
+   - `RabbitRpc.Serialization.XPacketRpc` — бинарный, рекомендуется для новых и высокопроизводительных деплоев.
+   - `RabbitRpc.Serialization.SystemTextJson` — JSON-на-проводе (совместимая форма с v3 payload). Выбирайте, если нельзя сразу отказаться от v3 продьюсеров/консьюмеров и нужно faithful JSON-поведение.
+3. **Новый DI-вызов обязателен.** Добавьте `.UseXPacketRpcSerialization()` или `.UseJsonRpcSerialization()` в builder. Старт падает с `OptionsValidationException`, если `IRpcSerializer` не зарегистрирован.
+4. **`AddRabbitRpcClient(cfg)` возвращает `RpcClientBuilder`**, не `IServiceCollection`. Цепляйте `.UseXPacketRpcSerialization()` затем `.AddProxy<T>()` (v3-расширение `AddRpcProxy<T>()` удалено).
+5. **Core-типы удалены**: `AsbtCore.Broker.Core.Serialization.{JsonRpcSerializer, RpcJson, RpcSerializationHelper, AddRpcSerialization}`. Они переехали в SystemTextJson adapter; новый namespace — `AsbtCore.Broker.Serialization.SystemTextJson`.
+6. **`RpcRequest.Arguments[i].Payload`**: `JsonElement` → `ReadOnlyMemory<byte>`. Касается только кода, который строит `RpcRequest` напрямую (кастомные транспорты).
+7. **`RpcResponse.Result`**: `JsonElement?` → `ReadOnlyMemory<byte>?`.
+8. **`IRpcSerializer` расширен** до четырёх методов (envelope `Serialize<T>` / `Deserialize<T>` над `RpcRequest`/`RpcResponse`, плюс `SerializeFragment` / `DeserializeFragment` над per-arg payload). Кастомные реализации требуют обновления.
+
+### Было → стало
+
+```csharp
+// v3.1
+services.AddRpcSerialization<JsonRpcSerializer>();          // namespace AsbtCore.Broker.Core.Serialization (удалён)
+services.AddRabbitRpcClient(configuration)
+        .AddRpcProxy<IMyService>();                         // возвращал IServiceCollection
+```
+
+```csharp
+// v4.0 — бинарный (рекомендуется)
+services.AddRabbitRpcClient(configuration)                  // теперь возвращает RpcClientBuilder
+        .UseXPacketRpcSerialization()
+        .AddProxy<IMyService>();
+```
+
+```csharp
+// v4.0 — JSON drop-in
+services.AddRabbitRpcClient(configuration)
+        .UseJsonRpcSerialization()
+        .AddProxy<IMyService>();
+```
+
+### Настройка DTO для XPacketRpc adapter
+
+Бинарный adapter полагается на Roslyn source generator, который эмитит per-DTO codec-ов на этапе компиляции. Генератор видит только DTO, достижимые из call site `XPRpc.Touch<T>()` в **той же compilation**, что и DTO. В вашем проекте контрактов:
+
+1. Сошлитесь на пакет генератора как на analyzer:
+   ```xml
+   <ProjectReference Include="..\.external\XProtokol\XPacketRpc\XPacketRpc.csproj" />
+   <ProjectReference Include="..\.external\XProtokol\XPacketRpc.Generators\XPacketRpc.Generators.csproj"
+                     OutputItemType="Analyzer"
+                     ReferenceOutputAssembly="false" />
+   ```
+2. Touch каждый DTO из module initializer:
+   ```csharp
+   using System.Runtime.CompilerServices;
+   using XPacketRpc;
+
+   internal static class GeneratorTouchSites
+   {
+       [ModuleInitializer]
+       internal static void TouchAll()
+       {
+           XPRpc.Touch<UserDto>();
+           XPRpc.Touch<OrderDto>();
+       }
+   }
+   ```
+
+JSON adapter не имеет эквивалентного шага — `System.Text.Json` рефлектит DTO в рантайме.
+
+### Действия оператора
+
+1. Обновите клиента и сервера **одновременно**; дренируйте `rpc.*` очереди до нуля.
+2. Выберите один adapter-пакет (`RabbitRpc.Serialization.XPacketRpc` или `RabbitRpc.Serialization.SystemTextJson`) и добавьте его в каждый проект клиента/сервера.
+3. Везде, где `AddRabbitRpcClient(cfg)` цепляется с `.AddRpcProxy<T>()`, замените на `.UseXxxSerialization().AddProxy<T>()`.
+4. Везде, где `AddRabbitRpcServer(cfg)` цепляется с `.Register<I,Impl>()`, добавьте `.UseXxxSerialization()` перед `.Register`.
+5. При выборе XPacketRpc — выполните DTO-настройку выше в проекте контрактов.
