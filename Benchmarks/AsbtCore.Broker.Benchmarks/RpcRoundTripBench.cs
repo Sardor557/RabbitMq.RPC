@@ -1,6 +1,7 @@
 using AsbtCore.Broker.Client;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Routing;
+using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,9 +47,10 @@ public class RpcRoundTripBench
         var registry = new RpcServerRegistry(
             new[] { new RpcServerRegistration(typeof(IBenchService), typeof(BenchService)) },
             resolver);
-        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+        var serializer = new JsonRpcSerializer();
+        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>(), serializer);
         var transport = new InMemoryTransport(dispatcher);
-        var client = new RpcClient(transport, resolver, options);
+        var client = new RpcClient(transport, resolver, serializer, options);
         var factory = new RpcProxyFactory(client, options);
         proxy = factory.CreateProxy<IBenchService>();
     }

@@ -26,5 +26,19 @@ namespace AsbtCore.Broker.Core.Serialization
 
         public T? Deserialize<T>(ReadOnlyMemory<byte> payload)
             => JsonSerializer.Deserialize<T>(payload.Span, options);
+
+        public RpcPayload PackPayload(object? value, Type type)
+            => new()
+            {
+                Json = JsonSerializer.SerializeToElement(value, type, options)
+            };
+
+        public object? UnpackPayload(RpcPayload payload, Type type)
+        {
+            if (!payload.HasJson)
+                throw new InvalidOperationException("JSON payload is missing.");
+
+            return payload.Json!.Value.Deserialize(type, options);
+        }
     }
 }

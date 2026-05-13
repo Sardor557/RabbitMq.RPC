@@ -90,4 +90,13 @@ public class JsonRpcSerializerTests
 
         await Assert.That(result).IsNull();
     }
+
+    [Test]
+    public async Task PackPayload_UnpackPayload_RoundTrips()
+    {
+        var payload = sut.PackPayload(123, typeof(int));
+        var restored = (int?)sut.UnpackPayload(payload, typeof(int));
+
+        await Assert.That(restored).IsEqualTo(123);
+    }
 }

@@ -47,6 +47,7 @@ public sealed class ServerDependencyInjectionTests
     public async Task AddRabbitRpcServer_RegistersIRpcSerializer()
     {
         var services = new ServiceCollection();
+        services.AddRpcJsonSerialization();
         services.AddRabbitRpcServer(BuildConfig());
 
         var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IRpcSerializer));

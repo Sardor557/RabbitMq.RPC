@@ -10,7 +10,7 @@ public sealed class RpcSerializationServiceCollectionExtensionsTests
     public async Task AddRpcSerialization_Default_RegistersJsonRpcSerializer()
     {
         var services = new ServiceCollection();
-        services.AddRpcSerialization();
+        services.AddRpcJsonSerialization();
         var sp = services.BuildServiceProvider();
 
         var serializer = sp.GetRequiredService<IRpcSerializer>();
@@ -23,7 +23,7 @@ public sealed class RpcSerializationServiceCollectionExtensionsTests
     public async Task AddRpcSerialization_Default_IsSingleton()
     {
         var services = new ServiceCollection();
-        services.AddRpcSerialization();
+        services.AddRpcJsonSerialization();
         var sp = services.BuildServiceProvider();
 
         var a = sp.GetRequiredService<IRpcSerializer>();
@@ -36,7 +36,7 @@ public sealed class RpcSerializationServiceCollectionExtensionsTests
     public async Task AddRpcSerialization_WithConfigure_AppliesOptions()
     {
         var services = new ServiceCollection();
-        services.AddRpcSerialization(opts => opts.WriteIndented = true);
+        services.AddRpcJsonSerialization(opts => opts.WriteIndented = true);
         var sp = services.BuildServiceProvider();
 
         var serializer = sp.GetRequiredService<IRpcSerializer>();
@@ -52,7 +52,7 @@ public sealed class RpcSerializationServiceCollectionExtensionsTests
 
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
         {
-            services.AddRpcSerialization(null!);
+            services.AddRpcJsonSerialization(null!);
             return Task.CompletedTask;
         });
     }
@@ -73,8 +73,8 @@ public sealed class RpcSerializationServiceCollectionExtensionsTests
     public async Task AddRpcSerialization_CalledTwice_DoesNotOverrideFirstRegistration()
     {
         var services = new ServiceCollection();
-        services.AddRpcSerialization();
-        services.AddRpcSerialization();
+        services.AddRpcJsonSerialization();
+        services.AddRpcJsonSerialization();
         var sp = services.BuildServiceProvider();
 
         var serializers = sp.GetServices<IRpcSerializer>().ToList();

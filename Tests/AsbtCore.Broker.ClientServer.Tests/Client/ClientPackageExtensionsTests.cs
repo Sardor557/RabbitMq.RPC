@@ -30,6 +30,7 @@ public class ClientPackageExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddRpcJsonSerialization();
 
         services.AddRabbitRpcClient(BuildConfig());
         var sp = services.BuildServiceProvider();
@@ -46,6 +47,7 @@ public class ClientPackageExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddRpcJsonSerialization();
         services.AddRabbitRpcClient(BuildConfig());
         services.AddRpcProxy<ITestService>();
         var sp = services.BuildServiceProvider();

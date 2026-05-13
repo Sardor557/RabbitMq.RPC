@@ -8,11 +8,13 @@ public sealed class RpcRequestDispatcher
 {
     private readonly RpcServerRegistry registry;
     private readonly IServiceScopeFactory scopeFactory;
+    private readonly IRpcSerializer serializer;
 
-    public RpcRequestDispatcher(RpcServerRegistry registry, IServiceScopeFactory scopeFactory)
+    public RpcRequestDispatcher(RpcServerRegistry registry, IServiceScopeFactory scopeFactory, IRpcSerializer serializer)
     {
         this.registry = registry;
         this.scopeFactory = scopeFactory;
+        this.serializer = serializer;
     }
 
     public async Task<RpcResponse> DispatchAsync(RpcRequest request, CancellationToken cancellationToken = default)
@@ -53,7 +55,7 @@ public sealed class RpcRequestDispatcher
 
                 try
                 {
-                    args[i] = RpcSerializationHelper.FromElement(arg.Payload, type);
+                    args[i] = serializer.UnpackPayload(arg.Payload, type);
                 }
                 catch (Exception ex)
                 {
@@ -79,7 +81,7 @@ public sealed class RpcRequestDispatcher
                 RequestId = request.RequestId,
                 Success = true,
                 ResultTypeName = logicalResultType is null ? null : StableTypeName.From(logicalResultType),
-                Result = logicalResultType is null ? null : RpcSerializationHelper.ToElement(result, logicalResultType)
+                Result = logicalResultType is null ? null : serializer.PackPayload(result, logicalResultType)
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

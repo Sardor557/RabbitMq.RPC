@@ -6,13 +6,13 @@ namespace AsbtCore.Broker.Core.Serialization
 {
     public static class RpcSerializationServiceCollectionExtensions
     {
-        public static IServiceCollection AddRpcSerialization(this IServiceCollection services)
+        public static IServiceCollection AddRpcJsonSerialization(this IServiceCollection services)
         {
             services.TryAddSingleton<IRpcSerializer>(_ => new JsonRpcSerializer(RpcJson.Options));
             return services;
         }
 
-        public static IServiceCollection AddRpcSerialization(
+        public static IServiceCollection AddRpcJsonSerialization(
             this IServiceCollection services,
             Action<JsonSerializerOptions> configure)
         {
@@ -24,6 +24,14 @@ namespace AsbtCore.Broker.Core.Serialization
             services.TryAddSingleton<IRpcSerializer>(_ => new JsonRpcSerializer(options));
             return services;
         }
+
+        public static IServiceCollection AddRpcSerialization(this IServiceCollection services)
+            => services.AddRpcJsonSerialization();
+
+        public static IServiceCollection AddRpcSerialization(
+            this IServiceCollection services,
+            Action<JsonSerializerOptions> configure)
+            => services.AddRpcJsonSerialization(configure);
 
         public static IServiceCollection AddRpcSerialization<TSerializer>(this IServiceCollection services)
             where TSerializer : class, IRpcSerializer

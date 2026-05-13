@@ -3,6 +3,7 @@ using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Routing;
+using AsbtCore.Broker.Core.Serialization;
 using Microsoft.Extensions.Options;
 
 namespace AsbtCore.Broker.Benchmarks;
@@ -18,7 +19,7 @@ internal static class BenchmarkClientFactory
         });
         var transport = new InProcessTransport();
         var resolver = new DefaultRpcRouteResolver(options);
-        return new RpcClient(transport, resolver, options);
+        return new RpcClient(transport, resolver, new JsonRpcSerializer(), options);
     }
 
     private sealed class InProcessTransport : IRpcTransport
@@ -30,7 +31,7 @@ internal static class BenchmarkClientFactory
             {
                 RequestId = request.RequestId,
                 Success = true,
-                Result = System.Text.Json.JsonSerializer.SerializeToElement(0, RpcJson.Options)
+                Result = new JsonRpcSerializer().PackPayload(0, typeof(int))
             };
             return Task.FromResult(response);
         }

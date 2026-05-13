@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text.Json;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Exceptions;
@@ -13,15 +12,18 @@ public sealed class RpcClient
 {
     private readonly IRpcTransport transport;
     private readonly IRpcRouteResolver routeResolver;
+    private readonly IRpcSerializer serializer;
     private readonly RpcOptions options;
 
     public RpcClient(
         IRpcTransport transport,
         IRpcRouteResolver routeResolver,
+        IRpcSerializer serializer,
         IOptions<RpcOptions> options)
     {
         this.transport = transport;
         this.routeResolver = routeResolver;
+        this.serializer = serializer;
         this.options = options.Value;
     }
 
@@ -47,7 +49,7 @@ public sealed class RpcClient
         bool expectsResult,
         CancellationToken cancellationToken)
     {
-        var request = BuildRequest(interfaceType, method, args);
+        var request = BuildRequest(interfaceType, method, args, serializer);
         var route = routeResolver.Resolve(interfaceType);
 
         var response = await transport.SendAsync(
@@ -68,13 +70,13 @@ public sealed class RpcClient
         if (!expectsResult)
             return default;
 
-        if (response.Result is null || response.Result.Value.ValueKind == JsonValueKind.Undefined)
+        if (response.Result is null)
             return default;
 
-        return response.Result.Value.Deserialize<T>(RpcJson.Options);
+        return (T?)serializer.UnpackPayload(response.Result, typeof(T));
     }
 
-    private static RpcRequest BuildRequest(Type interfaceType, MethodInfo method, object[] args)
+    private static RpcRequest BuildRequest(Type interfaceType, MethodInfo method, object[] args, IRpcSerializer serializer)
     {
         var interfaceName = interfaceType.FullName
             ?? throw new InvalidOperationException($"Type {interfaceType} has no FullName.");
@@ -110,7 +112,7 @@ public sealed class RpcClient
             request.Arguments.Add(new RpcArgument
             {
                 TypeName = typeName,
-                Payload = RpcSerializationHelper.ToElement(args[i], parameterType)
+                Payload = serializer.PackPayload(args[i], parameterType)
             });
         }
 

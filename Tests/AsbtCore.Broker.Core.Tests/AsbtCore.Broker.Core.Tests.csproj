@@ -17,5 +17,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\AsbtCore.Broker.Core\AsbtCore.Broker.Core.csproj" />
     <ProjectReference Include="..\..\AsbtCore.Broker.RabbitMq\AsbtCore.Broker.RabbitMq.csproj" />
+    <ProjectReference Include="..\..\AsbtCore.Broker.Serialization.MessagePack\AsbtCore.Broker.Serialization.MessagePack.csproj" />
   </ItemGroup>
 </Project>

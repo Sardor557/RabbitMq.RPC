@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
@@ -12,11 +11,12 @@ namespace AsbtCore.Broker.ClientServer.Tests.Server;
 public sealed class RpcRequestDispatcherTests
 {
     private static string Stn(Type t) => $"{t.FullName}, {t.Assembly.GetName().Name}";
+    private static readonly JsonRpcSerializer Serializer = new();
 
     private static RpcArgument Arg<T>(T value) => new()
     {
         TypeName = Stn(typeof(T)),
-        Payload = JsonSerializer.SerializeToElement(value, RpcJson.Options)
+        Payload = Serializer.PackPayload(value, typeof(T))
     };
 
     private static (RpcServerRegistry registry, RpcRequestDispatcher dispatcher) BuildSut(
@@ -33,7 +33,10 @@ public sealed class RpcRequestDispatcherTests
             services.AddScoped(impl);
 
         var sp = services.BuildServiceProvider();
-        var dispatcher = new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+        var dispatcher = new RpcRequestDispatcher(
+            registry,
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            Serializer);
 
         return (registry, dispatcher);
     }
@@ -107,7 +110,7 @@ public sealed class RpcRequestDispatcherTests
         var response = await dispatcher.DispatchAsync(request);
 
         await Assert.That(response.Success).IsTrue();
-        var result = response.Result!.Value.GetInt32();
+        var result = (int?)Serializer.UnpackPayload(response.Result!, typeof(int));
         await Assert.That(result).IsEqualTo(7);
     }
 
@@ -144,7 +147,7 @@ public sealed class RpcRequestDispatcherTests
                 new RpcArgument
                 {
                     TypeName = Stn(typeof(int)),
-                    Payload = JsonSerializer.SerializeToElement("not-a-number", RpcJson.Options)
+                    Payload = Serializer.PackPayload("not-a-number", typeof(string))
                 },
                 Arg(2)
             ]

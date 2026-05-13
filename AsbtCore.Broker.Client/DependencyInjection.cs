@@ -1,7 +1,6 @@
 ﻿using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Core.Options;
 using AsbtCore.Broker.Core.Routing;
-using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.RabbitMq.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,7 +17,6 @@ namespace AsbtCore.Broker.Client
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
-            services.AddRpcSerialization();
             services.TryAddSingleton<IRpcRouteResolver, DefaultRpcRouteResolver>();
             services.TryAddSingleton<RpcClient>();
             services.TryAddSingleton<RpcProxyFactory>();

@@ -1,5 +1,4 @@
 using System;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Client;
@@ -15,6 +14,8 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client;
 
 public class RpcProxyFactoryTests
 {
+    private static readonly JsonRpcSerializer Serializer = new();
+
     [Test]
     public async Task CreateProxy_InvokeMethod_DelegatesThroughTransport()
     {
@@ -22,9 +23,7 @@ public class RpcProxyFactoryTests
         var route = new Mock<IRpcRouteResolver>();
         route.Setup(x => x.Resolve(It.IsAny<Type>())).Returns("rpc.route");
 
-        var resultBytes = JsonSerializer.SerializeToUtf8Bytes(10, typeof(int), RpcJson.Options);
-        using var resultDoc = JsonDocument.Parse(resultBytes);
-        var packedResult = resultDoc.RootElement.Clone();
+        var packedResult = Serializer.PackPayload(10, typeof(int));
 
         transport
             .Setup(x => x.SendAsync(It.IsAny<RpcRequest>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
@@ -41,7 +40,7 @@ public class RpcProxyFactoryTests
             ClientProvidedName = "c", Port = 5672
         });
 
-        var client = new RpcClient(transport.Object, route.Object, options);
+        var client = new RpcClient(transport.Object, route.Object, Serializer, options);
         var factory = new RpcProxyFactory(client, options);
 
         var proxy = factory.CreateProxy<ITestService>();
@@ -69,7 +68,7 @@ public class RpcProxyFactoryTests
             ClientProvidedName = "c", Port = 1, DefaultTimeoutSeconds = 7
         });
 
-        var client = new RpcClient(transportSpy, route.Object, options);
+        var client = new RpcClient(transportSpy, route.Object, Serializer, options);
         var factory = new RpcProxyFactory(client, options);
 
         var proxy = factory.CreateProxy<ITestService>();

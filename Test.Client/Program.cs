@@ -21,7 +21,7 @@ namespace AsbtCore.Broker.Demo.Client
                     .Enrich.FromLogContext();
             });
 
-            builder.Services.AddRpcSerialization<JsonRpcSerializer>();  
+            builder.Services.AddRpcJsonSerialization();
             builder.Services
                 .AddRabbitRpcClient(builder.Configuration)
                 .AddRpcProxy<IUserService>();

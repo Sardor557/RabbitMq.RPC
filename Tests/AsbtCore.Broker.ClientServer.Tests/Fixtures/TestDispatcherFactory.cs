@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using AsbtCore.Broker.Core.Abstractions;
+using AsbtCore.Broker.Core.Serialization;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -26,7 +27,10 @@ internal static class TestDispatcherFactory
         services.AddScoped<TInterface>(sp => sp.GetRequiredService<TImpl>());
         var sp = services.BuildServiceProvider();
 
-        return new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>());
+        return new RpcRequestDispatcher(
+            registry,
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            new JsonRpcSerializer());
     }
 
     /// <summary>
@@ -72,7 +76,12 @@ internal static class TestDispatcherFactory
         services.AddScoped<TInterface>(sp => sp.GetRequiredService<TImpl>());
         var sp = services.BuildServiceProvider();
 
-        return (new RpcRequestDispatcher(registry, sp.GetRequiredService<IServiceScopeFactory>()), bogusTypeName);
+        return (
+            new RpcRequestDispatcher(
+                registry,
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                new JsonRpcSerializer()),
+            bogusTypeName);
     }
 
     private static RpcServerRegistry CreateRegistryFromMap(Dictionary<string, RpcServerDescriptor> map)

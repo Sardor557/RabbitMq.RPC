@@ -1,6 +1,5 @@
 using System;
 using System.Reflection;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AsbtCore.Broker.Client;
@@ -17,6 +16,7 @@ namespace AsbtCore.Broker.ClientServer.Tests.Client;
 
 public class RpcClientTests
 {
+    private static readonly JsonRpcSerializer Serializer = new();
     private Mock<IRpcTransport> transportMock = null!;
     private Mock<IRpcRouteResolver> routeMock = null!;
     private RpcOptions options = null!;
@@ -35,17 +35,12 @@ public class RpcClientTests
     }
 
     private RpcClient CreateSut()
-        => new(transportMock.Object, routeMock.Object, MsOptions.Create(options));
+        => new(transportMock.Object, routeMock.Object, Serializer, MsOptions.Create(options));
 
     private static MethodInfo Method(string name)
         => typeof(ITestService).GetMethod(name)!;
 
-    private static JsonElement? PackResult(object? value, Type type)
-    {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, type, RpcJson.Options);
-        using var doc = JsonDocument.Parse(bytes);
-        return doc.RootElement.Clone();
-    }
+    private static RpcPayload PackResult(object? value, Type type) => Serializer.PackPayload(value, type);
 
     [Test]
     public async Task Invoke_TaskOfT_ReturnsDeserializedResult()
