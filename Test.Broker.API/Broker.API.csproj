@@ -33,13 +33,12 @@
     <ProjectReference Include="..\AsbtCore.Broker.Core\AsbtCore.Broker.Core.csproj" />
     <ProjectReference Include="..\AsbtCore.Broker.Server\AsbtCore.Broker.Server.csproj" />
     <!--
-      The XPacketRpc adapter exposes both 'UseXPacketRpcSerialization(RpcServerBuilder)' and the
-      RpcClientBuilder overload from the same static class, so the compiler needs metadata for
-      'RpcClientBuilder' even on the server side. The adapter pins Client / Server with
-      'PrivateAssets="all"' for clean packaging, so consumers must add an explicit reference.
+      The MemoryPack adapter exposes UseMemoryPackRpcSerialization() for both RpcServerBuilder and
+      RpcClientBuilder. PrivateAssets="all" pins Client/Server inside the adapter package; consumers
+      must add explicit references to resolve both builder types.
     -->
     <ProjectReference Include="..\AsbtCore.Broker.Client\AsbtCore.Broker.Client.csproj" />
-    <ProjectReference Include="..\AsbtCore.Broker.Serialization.XPacketRpc\AsbtCore.Broker.Serialization.XPacketRpc.csproj" />
+    <ProjectReference Include="..\AsbtCore.Broker.Serialization.MemoryPack\AsbtCore.Broker.Serialization.MemoryPack.csproj" />
     <ProjectReference Include="..\Test.Contracts\Contracts.csproj" />
   </ItemGroup>
 

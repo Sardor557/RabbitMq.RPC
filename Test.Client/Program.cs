@@ -1,6 +1,6 @@
 ﻿using AsbtCore.Broker.Client;
 using AsbtCore.Broker.Demo.Contracts;
-using AsbtCore.Broker.Serialization.XPacketRpc;
+using AsbtCore.Broker.Serialization.MemoryPack;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -23,7 +23,7 @@ namespace AsbtCore.Broker.Demo.Client
 
             builder.Services
                 .AddRabbitRpcClient(builder.Configuration)
-                .UseXPacketRpcSerialization()
+                .UseMemoryPackRpcSerialization()
                 .AddProxy<IUserService>();
 
             using var host = builder.Build();

@@ -1,6 +1,9 @@
-﻿namespace AsbtCore.Broker.Demo.Contracts
+﻿using MemoryPack;
+
+namespace AsbtCore.Broker.Demo.Contracts
 {
-    public sealed class UserDto
+    [MemoryPackable]
+    public sealed partial class UserDto
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
