@@ -10,7 +10,15 @@
     <Description>MemoryPack binary adapter for RabbitRpc — provides IRpcSerializer over MemoryPack with hand-written formatters for Core wire types.</Description>
     <PackageTags>rabbitmq;rpc;dotnet;binary;serialization;memorypack</PackageTags>
 
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
+    <PackageReleaseNotes>
+1.1.0
+- Reflection-based formatter for DTOs without [MemoryPackable].
+- Lazy auto-discovery; no registration required for POCO / record / init-only DTOs.
+- New MemoryPackRpcOptions API: PrewarmType/PrewarmTypes/PrewarmAssembly and RegisterUnion for polymorphism.
+- Wire format unchanged for [MemoryPackable] types; reflection layout matches declaration-order source-gen for plain DTOs.
+- Existing UseMemoryPackRpcSerialization() callers continue to work; new overload accepts Action&lt;MemoryPackRpcOptions&gt;.
+    </PackageReleaseNotes>
     <Authors>AsbtCore</Authors>
     <Company>AsbtCore</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
