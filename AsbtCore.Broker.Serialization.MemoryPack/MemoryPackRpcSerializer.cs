@@ -19,11 +19,15 @@ public sealed class MemoryPackRpcSerializer : IRpcSerializer
     private readonly ReflectionMemoryPackRegistry registry;
 
     public MemoryPackRpcSerializer()
-        : this(ReflectionMemoryPackRegistry.Shared) { }
+        : this(options: null, ReflectionMemoryPackRegistry.Shared) { }
 
-    internal MemoryPackRpcSerializer(ReflectionMemoryPackRegistry registry)
+    public MemoryPackRpcSerializer(MemoryPackRpcOptions? options)
+        : this(options, ReflectionMemoryPackRegistry.Shared) { }
+
+    internal MemoryPackRpcSerializer(MemoryPackRpcOptions? options, ReflectionMemoryPackRegistry registry)
     {
         this.registry = registry;
+        options?.Apply(registry);
     }
 
     public string ContentType => "application/x-memorypack-rpc";

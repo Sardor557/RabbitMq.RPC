@@ -21,5 +21,7 @@ public sealed class UnionBuilder<TBase> where TBase : class
         return this;
     }
 
+    internal IReadOnlyList<Type> DerivedTypes => entries.Select(e => e.DerivedType).ToList();
+
     internal DynamicUnionFormatter<TBase> Build() => new(entries.ToArray());
 }
