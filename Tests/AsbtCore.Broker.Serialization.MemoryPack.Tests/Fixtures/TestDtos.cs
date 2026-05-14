@@ -66,3 +66,16 @@ public sealed class NoUsableCtorDto
     public int Id { get; }
     private NoUsableCtorDto(int id) { Id = id; }
 }
+
+[global::MemoryPack.MemoryPackable]
+public sealed partial class TaggedDto
+{
+    public int Id { get; set; }
+    public string Note { get; set; } = string.Empty;
+}
+
+public sealed class WrapperDto
+{
+    public TaggedDto? Tagged { get; set; }
+    public string OuterLabel { get; set; } = string.Empty;
+}
