@@ -54,4 +54,27 @@ public sealed class ReflectionFormatterTests
 
         await Assert.That(roundtrip!.OptionalCount).IsNull();
     }
+
+    [Test]
+    public async Task CyclicTypeGraph_RegistersWithoutOverflow()
+    {
+        var serializer = new MemoryPackRpcSerializer();
+        var original = new GraphA
+        {
+            Value = 1,
+            Child = new GraphB
+            {
+                Label = "b",
+                Parent = null, // avoid runtime data cycle
+            },
+        };
+
+        var bytes = serializer.Serialize(original);
+        var roundtrip = serializer.Deserialize<GraphA>(bytes);
+
+        await Assert.That(roundtrip!.Value).IsEqualTo(1);
+        await Assert.That(roundtrip.Child).IsNotNull();
+        await Assert.That(roundtrip.Child!.Label).IsEqualTo("b");
+        await Assert.That(roundtrip.Child.Parent).IsNull();
+    }
 }
