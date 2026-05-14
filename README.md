@@ -298,6 +298,33 @@ Poison messages (malformed payload, unresolvable type, internal dispatcher error
    ```
 4. Both sides must use the same `RoutePrefix` and interface namespace. Routing key = `RoutePrefix + typeof(T).FullName`.
 
+### Working with vendor DTOs (MemoryPack)
+
+If your DTOs ship inside compiled libraries you cannot modify, the
+`RabbitRpc.Serialization.MemoryPack` adapter supports them without any
+`[MemoryPackable]` attribute. Lazy discovery is on by default.
+
+For latency-sensitive paths use `PrewarmAssembly` / `PrewarmType` to amortize
+the per-type build cost at startup.
+
+For polymorphic base types you must register a union mapping explicitly —
+MemoryPack cannot infer derived types from a base reference at runtime.
+
+```csharp
+services.AddRabbitRpcServer(configuration)
+    .UseMemoryPackRpcSerialization(opt =>
+    {
+        opt.PrewarmAssembly(typeof(UserDto).Assembly);
+        opt.RegisterUnion<Animal>(b => b
+            .Add<Cat>(tag: 1)
+            .Add<Dog>(tag: 2));
+    });
+```
+
+Performance: reflection-built formatters are ~2-4x slower than native
+`[MemoryPackable]` source-gen but still faster than JSON. AOT/trim
+scenarios are not supported on this path — keep `[MemoryPackable]` for those.
+
 ---
 
 ## Testing
