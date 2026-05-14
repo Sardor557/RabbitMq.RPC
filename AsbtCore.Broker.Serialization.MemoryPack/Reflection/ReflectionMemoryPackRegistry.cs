@@ -10,6 +10,12 @@ internal sealed class ReflectionMemoryPackRegistry
 
     private readonly ConcurrentDictionary<Type, Lazy<bool>> registrations = new();
 
+    // Per-thread set of types currently being registered ON THIS THREAD. Distinguishes
+    // same-thread cycle re-entrance (must return early) from cross-thread concurrent
+    // access (must wait on Lazy.Value so the formatter is fully registered before we resume).
+    [ThreadStatic]
+    private static HashSet<Type>? inFlightOnThisThread;
+
     public void EnsureRegistered(Type type)
     {
         if (type.IsArray)
@@ -32,28 +38,31 @@ internal sealed class ReflectionMemoryPackRegistry
             return;
         }
 
-        // If already in registrations but value not created, we're in a cycle - skip
-        if (this.registrations.TryGetValue(type, out var existing) && !existing.IsValueCreated)
+        inFlightOnThisThread ??= new HashSet<Type>();
+        if (inFlightOnThisThread.Contains(type))
         {
+            // Same-thread re-entrance => cyclic type graph; formatter was registered
+            // eagerly by the outer factory call before recursing.
             return;
         }
 
         var lazy = this.registrations.GetOrAdd(type, t => new Lazy<bool>(
-            () => RegisterCore(t),
+            () =>
+            {
+                inFlightOnThisThread!.Add(t);
+                try { return RegisterCore(t); }
+                finally { inFlightOnThisThread.Remove(t); }
+            },
             LazyThreadSafetyMode.ExecutionAndPublication));
 
-        // Only access Value if not already created (prevents recursive access)
-        if (!lazy.IsValueCreated)
+        try
         {
-            try
-            {
-                _ = lazy.Value;
-            }
-            catch
-            {
-                this.registrations.TryRemove(type, out _);
-                throw;
-            }
+            _ = lazy.Value;
+        }
+        catch
+        {
+            this.registrations.TryRemove(type, out _);
+            throw;
         }
     }
 
@@ -81,13 +90,11 @@ internal sealed class ReflectionMemoryPackRegistry
         var plan = ReflectionMemoryPackPlan<T>.Build();
 
         // Register formatter EAGERLY before recursing into members.
-        // This breaks cycles: a member type that refers back to T sees T already registered
-        // and skips re-registration. Concurrent EnsureRegistered calls now wait on Lazy<bool>
-        // until our work completes, and they observe IsRegistered<T>() == true on resume.
+        // Cyclic member types re-enter EnsureRegistered for T and hit the
+        // inFlightOnThisThread early-return; by then the formatter is already
+        // registered with MemoryPack, so subsequent serialize lookups succeed.
         MemoryPackFormatterProvider.Register(new ReflectionMemoryPackFormatter<T>(plan));
 
-        // Defer member registration until after formatter is registered.
-        // This prevents Lazy<bool>.Value access during factory execution on cyclic types.
         foreach (var member in plan.Members)
         {
             self.EnsureRegistered(member.Property.PropertyType);

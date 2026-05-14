@@ -321,8 +321,9 @@ services.AddRabbitRpcServer(configuration)
     });
 ```
 
-Performance: reflection-built formatters are ~2-4x slower than native
-`[MemoryPackable]` source-gen but still faster than JSON. AOT/trim
+Performance: reflection-built formatters are **expected** to be ~2-4x slower than native
+`[MemoryPackable]` source-gen but still faster than JSON (estimate based on
+architectural reasoning; no benchmark has been run on this codepath yet). AOT/trim
 scenarios are not supported on this path — keep `[MemoryPackable]` for those.
 
 ---
