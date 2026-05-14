@@ -6,9 +6,9 @@ using System.Reflection;
 internal sealed class ReflectionMemoryPackPlan<T>
 {
     public IReadOnlyList<MemberDescriptor> Members { get; }
-    public Func<T> Activator { get; }
+    public Func<object?[], T> Activator { get; }
 
-    private ReflectionMemoryPackPlan(IReadOnlyList<MemberDescriptor> members, Func<T> activator)
+    private ReflectionMemoryPackPlan(IReadOnlyList<MemberDescriptor> members, Func<object?[], T> activator)
     {
         this.Members = members;
         this.Activator = activator;
@@ -33,7 +33,8 @@ internal sealed class ReflectionMemoryPackPlan<T>
             ?? throw new InvalidOperationException(
                 $"Type {type.FullName} has no usable constructor. Parameterless ctor required (records / init-only support added later).");
 
-        var activator = Expression.Lambda<Func<T>>(Expression.New(ctor)).Compile();
+        var argsParam = Expression.Parameter(typeof(object?[]), "args");
+        var activator = Expression.Lambda<Func<object?[], T>>(Expression.New(ctor), argsParam).Compile();
         return new ReflectionMemoryPackPlan<T>(members, activator);
     }
 }
