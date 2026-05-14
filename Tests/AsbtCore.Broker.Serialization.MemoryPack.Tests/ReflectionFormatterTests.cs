@@ -103,4 +103,22 @@ public sealed class ReflectionFormatterTests
         await Assert.That(roundtrip!.Id).IsEqualTo(9);
         await Assert.That(roundtrip.Tag).IsEqualTo("init");
     }
+
+    [Test]
+    public async Task NoUsableCtor_Throws()
+    {
+        var serializer = new MemoryPackRpcSerializer();
+        var ex = await Assert.That(() => serializer.Serialize(default(NoUsableCtorDto)!))
+            .Throws<InvalidOperationException>();
+        await Assert.That(ex!.Message.Contains("no usable constructor")).IsTrue();
+    }
+
+    [Test]
+    public async Task AbstractWithoutUnion_Throws()
+    {
+        var serializer = new MemoryPackRpcSerializer();
+        var ex = await Assert.That(() => serializer.SerializeFragment(new Cat { Name = "x" }, typeof(AnimalBase)))
+            .Throws<InvalidOperationException>();
+        await Assert.That(ex!.Message.Contains("abstract or an interface")).IsTrue();
+    }
 }
