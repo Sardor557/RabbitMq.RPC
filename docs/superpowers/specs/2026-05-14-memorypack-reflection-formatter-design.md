@@ -218,6 +218,24 @@ To be implemented in `Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests/`. **
 | Hidden cost of recursive registration on first call | `PrewarmAssembly` API. Document `Prewarm` as recommended for latency-sensitive paths. |
 | Conflict with future MemoryPack versions changing wire format | Adapter is internal; pin MemoryPack version in `AsbtCore.Broker.Serialization.MemoryPack.csproj`. |
 
+## Implementation skills (dotnet plugins)
+
+The implementation plan should invoke these skills at the listed phases. Each skill is referenced by its full ID for direct `Skill` tool invocation.
+
+| Phase | Skill | Purpose |
+|---|---|---|
+| Before touching csproj | `dotnet-msbuild:msbuild-antipatterns` | Sanity-check edits to `AsbtCore.Broker.Serialization.MemoryPack.csproj` (PackageReleaseNotes bump, version, dependencies). |
+| When changing csproj | `dotnet-msbuild:msbuild-modernization` | Ensure project file follows modern SDK conventions. |
+| During code authoring | `dotnet-diag:analyzing-dotnet-performance` | Audit reflection/Expression.Compile code paths for known .NET anti-patterns before merging. Skip the hot-path async/LINQ checks — focus on allocation patterns in `ReflectionMemoryPackFormatter.Serialize/Deserialize`. |
+| Test authoring | `dotnet-test:test-anti-patterns` | Audit new test files for assertion / smell issues before commit. TUnit + Moq idioms. |
+| Test execution | `dotnet-test:run-tests` | Run TUnit suites via `dotnet run` (project convention — NOT `dotnet test`). |
+| Test filtering during dev | `dotnet-test:filter-syntax` | Build `--treenode-filter` strings when iterating on a single failing test. |
+| Build verification | `dotnet-msbuild:incremental-build` | Confirm builds stay fast and incremental after new files are added. |
+| If build issues arise | `dotnet-msbuild:binlog-generation` + `dotnet-msbuild:binlog-failure-analysis` | Capture and diagnose any MSBuild errors during pack/publish. |
+| Post-implementation (optional, deferred) | `dotnet-diag:microbenchmarking` | Add a BenchmarkDotNet run inside `AsbtCore.Broker.Benchmarks` comparing native vs reflection formatter. Not in core scope — flagged for follow-up. |
+
+The implementation agent (writing-plans → executing-plans) is expected to invoke `dotnet-test:run-tests` after each phase that touches test code and `dotnet-msbuild:incremental-build` after each phase that touches csproj or adds new `.cs` files.
+
 ## Migration
 
 Existing consumers (using current `UseMemoryPackRpcSerialization()` overload with no arguments) need no changes. New capability is additive: types without `[MemoryPackable]` now serialize automatically.
