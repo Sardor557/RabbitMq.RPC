@@ -46,10 +46,22 @@ internal sealed class ReflectionMemoryPackFormatter<T> : MemoryPackFormatter<T>
             values[i] = read(ref reader);
         }
 
-        value ??= plan.Activator(System.Array.Empty<object?>());
+        object?[] ctorArgs = plan.CtorParameterCount > 0
+            ? new object?[plan.CtorParameterCount]
+            : System.Array.Empty<object?>();
         for (int i = 0; i < plan.Members.Count; i++)
         {
-            if (plan.Members[i].Property.SetMethod?.IsPublic == true)
+            if (plan.CtorMemberIndices[i] >= 0)
+            {
+                ctorArgs[plan.CtorMemberIndices[i]] = values[i];
+            }
+        }
+
+        value = plan.Activator(ctorArgs);
+
+        for (int i = 0; i < plan.Members.Count; i++)
+        {
+            if (plan.CtorMemberIndices[i] < 0 && plan.HasSetter[i])
             {
                 plan.Members[i].Property.SetValue(value, values[i]);
             }

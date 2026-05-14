@@ -77,4 +77,30 @@ public sealed class ReflectionFormatterTests
         await Assert.That(roundtrip.Child!.Label).IsEqualTo("b");
         await Assert.That(roundtrip.Child.Parent).IsNull();
     }
+
+    [Test]
+    public async Task Record_PrimaryCtor_RoundTrip()
+    {
+        var serializer = new MemoryPackRpcSerializer();
+        var original = new RecordDto(7, "hello");
+
+        var bytes = serializer.Serialize(original);
+        var roundtrip = serializer.Deserialize<RecordDto>(bytes);
+
+        await Assert.That(roundtrip!.Id).IsEqualTo(7);
+        await Assert.That(roundtrip.Title).IsEqualTo("hello");
+    }
+
+    [Test]
+    public async Task InitOnly_RoundTrip()
+    {
+        var serializer = new MemoryPackRpcSerializer();
+        var original = new InitOnlyDto { Id = 9, Tag = "init" };
+
+        var bytes = serializer.Serialize(original);
+        var roundtrip = serializer.Deserialize<InitOnlyDto>(bytes);
+
+        await Assert.That(roundtrip!.Id).IsEqualTo(9);
+        await Assert.That(roundtrip.Tag).IsEqualTo("init");
+    }
 }
