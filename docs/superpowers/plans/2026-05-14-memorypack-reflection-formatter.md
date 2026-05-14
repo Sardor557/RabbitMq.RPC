@@ -19,8 +19,7 @@
 - `AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackPlan.cs` — per-type cached plan: ordered members, ctor delegate, compiled serialize/deserialize delegates.
 - `AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackFormatter.cs` — generic `MemoryPackFormatter<T>` that invokes plan delegates.
 - `AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackRegistry.cs` — thread-safe orchestrator, `EnsureRegistered(Type)` recursion + cycle handling.
-- `AsbtCore.Broker.Serialization.MemoryPack/Polymorphism/UnionBuilder.cs` — fluent builder for union mapping.
-- `AsbtCore.Broker.Serialization.MemoryPack/Polymorphism/PolymorphicFormatter.cs` — tag-prefixed formatter for base types.
+- `AsbtCore.Broker.Serialization.MemoryPack/Polymorphism/UnionBuilder.cs` — fluent builder; produces `DynamicUnionFormatter<TBase>` from MemoryPack (no custom polymorphic formatter — built-in lib path).
 - `AsbtCore.Broker.Serialization.MemoryPack/MemoryPackRpcOptions.cs` — options bag for DI extension.
 - `Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests/ReflectionFormatterTests.cs`
 - `Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests/PolymorphismTests.cs`
@@ -325,33 +324,78 @@ git commit -m "feat(memorypack): add plan struct for reflection formatter (poco 
 
 ---
 
-### Task 5: ReflectionMemoryPackFormatter<T> — serialize/deserialize delegates
+### Task 5: ReflectionMemoryPackFormatter<T> — runtime-typed serialize/deserialize
 
 **Files:**
 - Create: `AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackFormatter.cs`
+- Create: `AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReadValueCache.cs`
 
-The formatter writes members in declaration order; each member resolves through `MemoryPackFormatterProvider.GetFormatter<TMember>()`. We emit non-generic per-member writers via Expression trees that invoke `writer.WriteValue` / `reader.ReadValue` generically — see implementation.
+**MemoryPack 1.x API verified (probe results):**
+- `MemoryPackFormatter<T>.Serialize<TBufferWriter>(ref MemoryPackWriter<TBufferWriter>, scoped ref T?)` — generic-per-call, so a single pre-compiled lambda body can't bridge `TBufferWriter`. Use the boxed runtime helper `MemoryPackSerializer.Serialize(Type, ref writer, object?)` (overload exists and accepts the generic writer).
+- `MemoryPackFormatter<T>.Deserialize(ref MemoryPackReader, scoped ref T?)` — reader is non-generic, so we can pre-compile per-member readers via `Expression.Compile` with a custom `RefFunc<MemoryPackReader, object?>` delegate type.
+- `MemoryPackReader.ReadValue<T>(ref T value)` and `MemoryPackWriter<TBufferWriter>.WriteValue<T>(T value)` confirmed.
+- No `MemoryPackSerializer.Deserialize(Type, ref MemoryPackReader)` overload exists — that's why deserialize uses cached compiled per-member delegates.
 
-- [ ] **Step 1: Implement formatter**
+Spec target "~2-4x slower than native" is preserved: Serialize boxes once per member; Deserialize uses typed cached delegates so the only allocation is the temporary `object?` returned from each member read.
+
+- [ ] **Step 1: Implement the cache for typed deserialize delegates**
 
 ```csharp
 namespace AsbtCore.Broker.Serialization.MemoryPack.Reflection;
 
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using global::MemoryPack;
+
+internal delegate TResult RefFunc<T1, TResult>(ref T1 arg);
+
+internal static class ReadValueCache
+{
+    private static readonly ConcurrentDictionary<Type, RefFunc<MemoryPackReader, object?>> Cache = new();
+
+    public static RefFunc<MemoryPackReader, object?> Get(Type type)
+        => Cache.GetOrAdd(type, BuildReader);
+
+    private static RefFunc<MemoryPackReader, object?> BuildReader(Type type)
+    {
+        var readMethod = typeof(MemoryPackReader)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .First(m => m.Name == nameof(MemoryPackReader.ReadValue)
+                        && m.IsGenericMethodDefinition
+                        && m.GetParameters().Length == 1
+                        && m.GetParameters()[0].ParameterType.IsByRef)
+            .MakeGenericMethod(type);
+
+        var reader = Expression.Parameter(typeof(MemoryPackReader).MakeByRefType(), "reader");
+        var tmp = Expression.Variable(type, "tmp");
+        var defaultValue = Expression.Default(type);
+        var call = Expression.Call(reader, readMethod, tmp);
+        var boxed = Expression.Convert(tmp, typeof(object));
+        var body = Expression.Block(
+            variables: [tmp],
+            Expression.Assign(tmp, defaultValue),
+            call,
+            boxed);
+        return Expression.Lambda<RefFunc<MemoryPackReader, object?>>(body, reader).Compile();
+    }
+}
+```
+
+- [ ] **Step 2: Implement the formatter**
+
+```csharp
+namespace AsbtCore.Broker.Serialization.MemoryPack.Reflection;
+
 using global::MemoryPack;
 
 internal sealed class ReflectionMemoryPackFormatter<T> : MemoryPackFormatter<T>
 {
     private readonly ReflectionMemoryPackPlan<T> plan;
-    private readonly Action<MemoryPackWriter, T> writeBody;
-    private readonly Action<MemoryPackReader, T> readBody;
 
     public ReflectionMemoryPackFormatter(ReflectionMemoryPackPlan<T> plan)
     {
         this.plan = plan;
-        this.writeBody = BuildWriter(plan.Members);
-        this.readBody = BuildReader(plan.Members);
     }
 
     public override void Serialize<TBufferWriter>(ref MemoryPackWriter<TBufferWriter> writer, scoped ref T? value)
@@ -362,11 +406,11 @@ internal sealed class ReflectionMemoryPackFormatter<T> : MemoryPackFormatter<T>
             return;
         }
         writer.WriteObjectHeader((byte)plan.Members.Count);
-
-        // Bridging to non-generic writer signature: pack the writer ref through a wrapper.
-        var box = new WriterBox<TBufferWriter>(ref writer);
-        try { writeBody(box.AsBase(), value); }
-        finally { box.Release(); }
+        foreach (var member in plan.Members)
+        {
+            var memberValue = member.Property.GetValue(value);
+            MemoryPackSerializer.Serialize(member.Property.PropertyType, ref writer, memberValue);
+        }
     }
 
     public override void Deserialize(ref MemoryPackReader reader, scoped ref T? value)
@@ -381,59 +425,54 @@ internal sealed class ReflectionMemoryPackFormatter<T> : MemoryPackFormatter<T>
             throw new MemoryPackSerializationException(
                 $"Member count mismatch for {typeof(T).FullName}: payload has {count}, expected {plan.Members.Count}.");
         }
-        value ??= plan.Activator();
-        readBody(reader, value);
-    }
 
-    private static Action<MemoryPackWriter, T> BuildWriter(IReadOnlyList<MemberDescriptor> members)
-    {
-        var writer = Expression.Parameter(typeof(MemoryPackWriter).MakeByRefType(), "writer");
-        var instance = Expression.Parameter(typeof(T), "instance");
-        var calls = new List<Expression>(members.Count);
-        foreach (var member in members)
+        var values = new object?[plan.Members.Count];
+        for (int i = 0; i < plan.Members.Count; i++)
         {
-            var writeValue = typeof(MemoryPackWriter)
-                .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                .First(m => m.Name == "WriteValue" && m.IsGenericMethodDefinition && m.GetParameters().Length == 1)
-                .MakeGenericMethod(member.Property.PropertyType);
-            calls.Add(Expression.Call(writer, writeValue, Expression.Property(instance, member.Property)));
+            var read = ReadValueCache.Get(plan.Members[i].Property.PropertyType);
+            values[i] = read(ref reader);
         }
-        var body = calls.Count > 0 ? (Expression)Expression.Block(calls) : Expression.Empty();
-        return Expression.Lambda<Action<MemoryPackWriter, T>>(body, writer, instance).Compile();
-    }
 
-    private static Action<MemoryPackReader, T> BuildReader(IReadOnlyList<MemberDescriptor> members)
-    {
-        var reader = Expression.Parameter(typeof(MemoryPackReader).MakeByRefType(), "reader");
-        var instance = Expression.Parameter(typeof(T), "instance");
-        var calls = new List<Expression>(members.Count);
-        foreach (var member in members)
+        value ??= plan.Activator(System.Array.Empty<object?>());
+        for (int i = 0; i < plan.Members.Count; i++)
         {
-            var readValue = typeof(MemoryPackReader)
-                .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                .First(m => m.Name == "ReadValue" && m.IsGenericMethodDefinition && m.GetParameters().Length == 0)
-                .MakeGenericMethod(member.Property.PropertyType);
-            var value = Expression.Call(reader, readValue);
-            calls.Add(Expression.Assign(Expression.Property(instance, member.Property), value));
+            if (plan.Members[i].Property.SetMethod?.IsPublic == true)
+            {
+                plan.Members[i].Property.SetValue(value, values[i]);
+            }
         }
-        var body = calls.Count > 0 ? (Expression)Expression.Block(calls) : Expression.Empty();
-        return Expression.Lambda<Action<MemoryPackReader, T>>(body, reader, instance).Compile();
     }
 }
 ```
 
-> Note: The `WriterBox<TBufferWriter>` ref-bridging type is sketched here for clarity. If the MemoryPack API in the pinned version does not expose a non-generic writer reachable from `MemoryPackWriter<TBufferWriter>`, the implementer should keep both `Serialize` and `Deserialize` symmetric — emit Expression lambdas typed to `MemoryPackWriter<TBufferWriter>` cached per `TBufferWriter`. See `references/memorypack-writer-bridge.md` (to be authored by the implementer if a non-trivial bridge is needed). If the bridge cannot be avoided cleanly, swap to using `MemoryPackSerializer.Serialize(stream, value)` overload internally and document the perf delta in commit message.
+> Task 10 extends this Deserialize to use ctor-parameter binding (records/init-only). For Task 5 the simple parameterless-ctor + property-setter path is enough.
 
-- [ ] **Step 2: Build**
+- [ ] **Step 3: Adjust Plan.Activator signature**
+
+The Plan from Task 4 currently exposes `Func<T> Activator`. Update it now to `Func<object?[], T> Activator` so Task 10 can extend it without rewrites:
+
+In `ReflectionMemoryPackPlan.cs`, replace the type of `Activator`:
+
+```csharp
+public Func<object?[], T> Activator { get; }
+```
+
+And the constructor inside `Build()`:
+
+```csharp
+var activator = Expression.Lambda<Func<object?[], T>>(Expression.New(ctor), Expression.Parameter(typeof(object?[]), "args")).Compile();
+```
+
+- [ ] **Step 4: Build**
 
 Run: `dotnet build AsbtCore.Broker.Serialization.MemoryPack/AsbtCore.Broker.Serialization.MemoryPack.csproj -nologo`
-Expected: `Build succeeded`. If the WriterBox sketch fails to compile, adjust per the note above — emit lambdas keyed on `TBufferWriter`. Commit message must mention the chosen approach.
+Expected: `Build succeeded` with 0 errors.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackFormatter.cs
-git commit -m "feat(memorypack): add reflection formatter with compiled member delegates"
+git add AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackFormatter.cs AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReadValueCache.cs AsbtCore.Broker.Serialization.MemoryPack/Reflection/ReflectionMemoryPackPlan.cs
+git commit -m "feat(memorypack): add reflection formatter with cached typed-read delegates"
 ```
 
 ---
@@ -899,13 +938,13 @@ public override void Deserialize(ref MemoryPackReader reader, scoped ref T? valu
     var values = new object?[plan.Members.Count];
     for (int i = 0; i < plan.Members.Count; i++)
     {
-        var propType = plan.Members[i].Property.PropertyType;
-        values[i] = MemoryPackSerializer.Deserialize(propType, ref reader);
+        var read = ReadValueCache.Get(plan.Members[i].Property.PropertyType);
+        values[i] = read(ref reader);
     }
 
     // Build ctor arg array using ctorIndices map.
-    var ctorParamCount = plan.CtorMemberIndices.Max() + 1;
-    object?[] ctorArgs = ctorParamCount > 0 ? new object?[ctorParamCount] : Array.Empty<object?>();
+    var ctorParamCount = plan.CtorMemberIndices.Length == 0 ? 0 : plan.CtorMemberIndices.Max() + 1;
+    object?[] ctorArgs = ctorParamCount > 0 ? new object?[ctorParamCount] : System.Array.Empty<object?>();
     for (int i = 0; i < plan.Members.Count; i++)
     {
         if (plan.CtorMemberIndices[i] >= 0)
@@ -927,7 +966,7 @@ public override void Deserialize(ref MemoryPackReader reader, scoped ref T? valu
 }
 ```
 
-> The `MemoryPackSerializer.Deserialize(Type, ref MemoryPackReader)` overload is used so the per-member type is dispatched dynamically. The serialize path stays compiled.
+> Member deserialization uses the per-type cached `ReadValueCache` delegates introduced in Task 5 — `MemoryPackSerializer.Deserialize(Type, ref MemoryPackReader)` does not exist as an overload.
 
 - [ ] **Step 5: Run the new tests**
 
@@ -984,12 +1023,13 @@ git commit -m "test(memorypack): cover fail-fast cases (no ctor, abstract w/o un
 
 ---
 
-### Task 12: UnionBuilder + PolymorphicFormatter
+### Task 12: UnionBuilder (delegates to DynamicUnionFormatter)
 
 **Files:**
 - Create: `AsbtCore.Broker.Serialization.MemoryPack/Polymorphism/UnionBuilder.cs`
-- Create: `AsbtCore.Broker.Serialization.MemoryPack/Polymorphism/PolymorphicFormatter.cs`
 - Create: `Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests/PolymorphismTests.cs`
+
+**Design note:** MemoryPack ships `MemoryPack.Formatters.DynamicUnionFormatter<T>` for runtime union mapping. No custom formatter needed — we just build the `(ushort tag, Type derived)` tuple list and instantiate the lib's formatter.
 
 - [ ] **Step 1: Write failing test**
 
@@ -1022,102 +1062,48 @@ public sealed class PolymorphismTests
 }
 ```
 
-This task also depends on `MemoryPackRpcOptions` (next task). Reorder: implement UnionBuilder + PolymorphicFormatter here, defer wiring to options/serializer to Task 13. Test will turn green after Task 13.
+This task also depends on `MemoryPackRpcOptions` (next task). Test goes green after Task 13.
 
 - [ ] **Step 2: Implement UnionBuilder**
 
 ```csharp
 namespace AsbtCore.Broker.Serialization.MemoryPack.Polymorphism;
 
+using global::MemoryPack.Formatters;
+
 public sealed class UnionBuilder<TBase>
 {
-    private readonly Dictionary<byte, Type> tagToType = new();
-    private readonly Dictionary<Type, byte> typeToTag = new();
+    private readonly List<(ushort Tag, Type DerivedType)> entries = new();
+    private readonly HashSet<ushort> tags = new();
+    private readonly HashSet<Type> types = new();
 
-    public UnionBuilder<TBase> Add<TDerived>(byte tag) where TDerived : TBase
+    public UnionBuilder<TBase> Add<TDerived>(ushort tag) where TDerived : TBase
     {
+        if (!tags.Add(tag))
+            throw new InvalidOperationException(
+                $"Tag {tag} already mapped on union {typeof(TBase).FullName}.");
         var derived = typeof(TDerived);
-        if (tagToType.ContainsKey(tag))
-            throw new InvalidOperationException($"Tag {tag} already mapped on union {typeof(TBase).FullName}.");
-        if (typeToTag.ContainsKey(derived))
-            throw new InvalidOperationException($"Type {derived.FullName} already mapped on union {typeof(TBase).FullName}.");
-        tagToType[tag] = derived;
-        typeToTag[derived] = tag;
+        if (!types.Add(derived))
+            throw new InvalidOperationException(
+                $"Type {derived.FullName} already mapped on union {typeof(TBase).FullName}.");
+        entries.Add((tag, derived));
         return this;
     }
 
-    internal IReadOnlyDictionary<byte, Type> TagToType => tagToType;
-    internal IReadOnlyDictionary<Type, byte> TypeToTag => typeToTag;
+    internal DynamicUnionFormatter<TBase> Build() => new(entries.ToArray());
 }
 ```
 
-- [ ] **Step 3: Implement PolymorphicFormatter**
-
-```csharp
-namespace AsbtCore.Broker.Serialization.MemoryPack.Polymorphism;
-
-using MemoryPack;
-
-internal sealed class PolymorphicFormatter<TBase> : MemoryPackFormatter<TBase>
-{
-    private readonly IReadOnlyDictionary<byte, Type> tagToType;
-    private readonly IReadOnlyDictionary<Type, byte> typeToTag;
-
-    public PolymorphicFormatter(UnionBuilder<TBase> builder)
-    {
-        this.tagToType = builder.TagToType;
-        this.typeToTag = builder.TypeToTag;
-    }
-
-    public override void Serialize<TBufferWriter>(ref MemoryPackWriter<TBufferWriter> writer, scoped ref TBase? value)
-    {
-        if (value is null)
-        {
-            writer.WriteNullObjectHeader();
-            return;
-        }
-        var runtimeType = value.GetType();
-        if (!typeToTag.TryGetValue(runtimeType, out var tag))
-        {
-            throw new InvalidOperationException(
-                $"Runtime type {runtimeType.FullName} is not mapped on union {typeof(TBase).FullName}.");
-        }
-        writer.WriteUnmanaged(tag);
-        MemoryPackSerializer.Serialize(runtimeType, ref writer, value);
-    }
-
-    public override void Deserialize(ref MemoryPackReader reader, scoped ref TBase? value)
-    {
-        // Sentinel: a null union value is encoded as a null-object-header which Serialize wrote above.
-        if (reader.PeekIsNull())
-        {
-            reader.Advance(1);
-            value = default;
-            return;
-        }
-        reader.ReadUnmanaged(out byte tag);
-        if (!tagToType.TryGetValue(tag, out var derived))
-        {
-            throw new MemoryPackSerializationException(
-                $"Unknown union tag {tag} for {typeof(TBase).FullName}.");
-        }
-        value = (TBase?)MemoryPackSerializer.Deserialize(derived, ref reader);
-    }
-}
-```
-
-> If the pinned MemoryPack version's `MemoryPackReader.PeekIsNull` / null-header API differs, adjust the null check accordingly — write `Polymorphism/PolymorphicFormatter.cs` such that null base values round-trip. Add a test for the null case in Task 14.
-
-- [ ] **Step 4: Build (test still red, expected — options wiring next)**
+- [ ] **Step 3: Build**
 
 Run: `dotnet build AsbtCore.Broker.Serialization.MemoryPack/AsbtCore.Broker.Serialization.MemoryPack.csproj -nologo`
 Expected: `Build succeeded`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add AsbtCore.Broker.Serialization.MemoryPack/Polymorphism Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests/PolymorphismTests.cs
-git commit -m "feat(memorypack): add union builder and polymorphic tag-prefix formatter"
+git commit -m "feat(memorypack): add union builder backed by DynamicUnionFormatter"
 ```
 
 ---
@@ -1165,17 +1151,19 @@ public sealed class MemoryPackRpcOptions
 
     public MemoryPackRpcOptions RegisterUnion<TBase>(Action<UnionBuilder<TBase>> configure)
     {
+        var builder = new UnionBuilder<TBase>();
+        configure(builder); // run synchronously so duplicate-tag errors surface immediately
         unionRegistrations.Add(() =>
         {
-            if (MemoryPackFormatterProvider.IsRegistered<TBase>())
+            if (!RegisteredUnionBases.TryAdd(typeof(TBase), 0))
                 throw new InvalidOperationException(
                     $"Union for type {typeof(TBase).FullName} is already registered.");
-            var builder = new UnionBuilder<TBase>();
-            configure(builder);
-            MemoryPackFormatterProvider.Register(new PolymorphicFormatter<TBase>(builder));
+            MemoryPackFormatterProvider.Register(builder.Build());
         });
         return this;
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, byte> RegisteredUnionBases = new();
 
     internal void Apply(ReflectionMemoryPackRegistry registry)
     {
@@ -1318,12 +1306,14 @@ public async Task Union_NullValue_RoundTrips()
 }
 ```
 
-> The `Union_DuplicateRegistration_Throws` test depends on the registry being shared across serializer instances. If the duplicate check should be scoped per-serializer, change the implementation in `MemoryPackRpcOptions.Apply` to track registered base types in a static set with proper isolation — and update the assertion accordingly. Pick the behavior that matches the spec: spec says "process-wide", so global throw is correct.
+> Duplicate-base detection is process-wide via `MemoryPackRpcOptions.RegisteredUnionBases` (matches spec). Null-value handling is provided by `DynamicUnionFormatter` from the MemoryPack library.
+>
+> Tests may need ordering — `Union_DuplicateRegistration_Throws` registers `AnimalBase` and pollutes the global state. Run polymorphism tests with a fixture-level cleanup if they collide. If the test order causes `Union_RoundTrips_AsBase` to fail because `AnimalBase` is "already registered", either: (a) reset `RegisteredUnionBases` between tests via reflection in a test fixture, or (b) make the static dictionary internal and provide an internal `ResetForTests()` helper used only from the test project. Pick option (b) — cleaner.
 
 - [ ] **Step 2: Run**
 
 Run: `dotnet run --project Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests/AsbtCore.Broker.Serialization.MemoryPack.Tests.csproj -- --treenode-filter "/*/*/PolymorphismTests/*"`
-Expected: PASS. If `Union_NullValue_RoundTrips` fails, revisit Task 12 Step 3 `PolymorphicFormatter` null encoding/decoding (the `PeekIsNull`/`Advance` sketch).
+Expected: PASS.
 
 - [ ] **Step 3: Commit**
 
