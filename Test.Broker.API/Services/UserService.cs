@@ -1,4 +1,5 @@
 ﻿using AsbtCore.Broker.Demo.Contracts;
+using Contracts;
 
 namespace AsbtCore.Broker.API.Services
 {
@@ -25,6 +26,11 @@ namespace AsbtCore.Broker.API.Services
         {
             Console.WriteLine("Ping received on server.");
             return Task.CompletedTask;
+        }
+
+        public Task<int> SumAllAsync(RqModel rq)
+        {
+            return Task.FromResult(rq.a + rq.b + rq.c);
         }
     }
 }
