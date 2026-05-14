@@ -8,7 +8,7 @@ internal sealed class ReflectionMemoryPackRegistry
 {
     public static ReflectionMemoryPackRegistry Shared { get; } = new();
 
-    private readonly ConcurrentDictionary<Type, RegistrationState> states = new();
+    private readonly ConcurrentDictionary<Type, Lazy<bool>> registrations = new();
 
     public void EnsureRegistered(Type type)
     {
@@ -24,24 +24,31 @@ internal sealed class ReflectionMemoryPackRegistry
         }
         if (type.IsPrimitive || type == typeof(string) || type == typeof(decimal) || type.IsEnum)
         {
-            return; // MemoryPack handles primitives/enums/string natively.
+            return;
         }
         if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type) && type.IsGenericType)
         {
             foreach (var arg in type.GetGenericArguments()) EnsureRegistered(arg);
-            return; // collection formatters built-in; element types registered above.
+            return;
         }
 
-        var current = states.GetOrAdd(type, RegistrationState.Pending);
-        if (current == RegistrationState.Registered) return;
-        if (current == RegistrationState.InProgress) return;
+        var lazy = this.registrations.GetOrAdd(type, t => new Lazy<bool>(
+            () => RegisterCore(t),
+            LazyThreadSafetyMode.ExecutionAndPublication));
 
-        lock (states)
+        try
         {
-            if (states[type] != RegistrationState.Pending) return;
-            states[type] = RegistrationState.InProgress;
+            _ = lazy.Value;
         }
+        catch
+        {
+            this.registrations.TryRemove(type, out _);
+            throw;
+        }
+    }
 
+    private bool RegisterCore(Type type)
+    {
         var registerMethod = typeof(ReflectionMemoryPackRegistry)
             .GetMethod(nameof(RegisterTyped), BindingFlags.NonPublic | BindingFlags.Static)!
             .MakeGenericMethod(type);
@@ -49,13 +56,12 @@ internal sealed class ReflectionMemoryPackRegistry
         try
         {
             registerMethod.Invoke(null, new object[] { this });
-            states[type] = RegistrationState.Registered;
         }
-        catch
+        catch (TargetInvocationException tie) when (tie.InnerException is not null)
         {
-            states.TryRemove(type, out _);
-            throw;
+            throw tie.InnerException;
         }
+        return true;
     }
 
     private static void RegisterTyped<T>(ReflectionMemoryPackRegistry self)
@@ -63,21 +69,16 @@ internal sealed class ReflectionMemoryPackRegistry
         if (MemoryPackFormatterProvider.IsRegistered<T>()) return;
 
         var plan = ReflectionMemoryPackPlan<T>.Build();
+
+        // Register formatter EAGERLY before recursing into members.
+        // This breaks cycles: a member type that refers back to T sees T already registered
+        // and skips re-registration. Concurrent EnsureRegistered calls now wait on Lazy<bool>
+        // until our work completes, and they observe IsRegistered<T>() == true on resume.
+        MemoryPackFormatterProvider.Register(new ReflectionMemoryPackFormatter<T>(plan));
+
         foreach (var member in plan.Members)
         {
             self.EnsureRegistered(member.Property.PropertyType);
         }
-
-        if (!MemoryPackFormatterProvider.IsRegistered<T>())
-        {
-            MemoryPackFormatterProvider.Register(new ReflectionMemoryPackFormatter<T>(plan));
-        }
-    }
-
-    private enum RegistrationState : byte
-    {
-        Pending = 0,
-        InProgress = 1,
-        Registered = 2,
     }
 }

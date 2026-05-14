@@ -6,8 +6,7 @@ public sealed class SimplePocoDto
     public string Name { get; set; } = string.Empty;
 }
 
-[MemoryPackable]
-public sealed partial class CollectionsDto
+public sealed class CollectionsDto
 {
     public List<int> Numbers { get; set; } = new();
     public Dictionary<string, int> Map { get; set; } = new();
