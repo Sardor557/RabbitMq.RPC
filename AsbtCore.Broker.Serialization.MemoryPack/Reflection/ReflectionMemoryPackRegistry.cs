@@ -32,18 +32,28 @@ internal sealed class ReflectionMemoryPackRegistry
             return;
         }
 
+        // If already in registrations but value not created, we're in a cycle - skip
+        if (this.registrations.TryGetValue(type, out var existing) && !existing.IsValueCreated)
+        {
+            return;
+        }
+
         var lazy = this.registrations.GetOrAdd(type, t => new Lazy<bool>(
             () => RegisterCore(t),
             LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
+        // Only access Value if not already created (prevents recursive access)
+        if (!lazy.IsValueCreated)
         {
-            _ = lazy.Value;
-        }
-        catch
-        {
-            this.registrations.TryRemove(type, out _);
-            throw;
+            try
+            {
+                _ = lazy.Value;
+            }
+            catch
+            {
+                this.registrations.TryRemove(type, out _);
+                throw;
+            }
         }
     }
 
@@ -76,6 +86,8 @@ internal sealed class ReflectionMemoryPackRegistry
         // until our work completes, and they observe IsRegistered<T>() == true on resume.
         MemoryPackFormatterProvider.Register(new ReflectionMemoryPackFormatter<T>(plan));
 
+        // Defer member registration until after formatter is registered.
+        // This prevents Lazy<bool>.Value access during factory execution on cyclic types.
         foreach (var member in plan.Members)
         {
             self.EnsureRegistered(member.Property.PropertyType);
