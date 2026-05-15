@@ -9,6 +9,12 @@ dotnet add package RabbitRpc.Serialization.SystemTextJson
 dotnet add package RabbitRpc.Client     # or RabbitRpc.Server
 ```
 
+## Pack for NuGet
+
+```bash
+dotnet pack -c Release
+```
+
 This package is a sidecar to `RabbitRpc.Client` / `RabbitRpc.Server` — install one (or both) of those alongside it.
 
 ## Configuration

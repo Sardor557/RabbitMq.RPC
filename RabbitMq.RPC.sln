@@ -45,8 +45,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsbtCore.Broker.Serializati
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsbtCore.Broker.Serialization.XPacketRpc.Tests", "Tests\AsbtCore.Broker.Serialization.XPacketRpc.Tests\AsbtCore.Broker.Serialization.XPacketRpc.Tests.csproj", "{2719478D-FDF0-4F6B-83E4-D51BD1475D4B}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".external", ".external", "{5D102331-4441-719B-CF9B-21769DFE5A54}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsbtCore.Broker.Serialization.MemoryPack", "AsbtCore.Broker.Serialization.MemoryPack\AsbtCore.Broker.Serialization.MemoryPack.csproj", "{E1197938-BE02-4404-985F-8C10515DFAA6}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsbtCore.Broker.Serialization.MemoryPack.Tests", "Tests\AsbtCore.Broker.Serialization.MemoryPack.Tests\AsbtCore.Broker.Serialization.MemoryPack.Tests.csproj", "{54D89620-71A9-4BD6-B5D8-D30C0E5927BA}"

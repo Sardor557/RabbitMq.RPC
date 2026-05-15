@@ -15,6 +15,12 @@ dotnet add package RabbitRpc.Client
 dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .MemoryPack / .SystemTextJson
 ```
 
+## Pack for NuGet
+
+```bash
+dotnet pack -c Release
+```
+
 ## Configuration
 
 Add the `RabbitMqRpc` section to `appsettings.json`:
