@@ -1,7 +1,7 @@
 ﻿using AsbtCore.Broker.Demo.Contracts;
 using Contracts;
 
-namespace AsbtCore.Broker.API.Services
+namespace Server.Services
 {
     public sealed class UserService : IUserService
     {

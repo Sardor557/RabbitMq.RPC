@@ -1,6 +1,5 @@
 using AsbtCore.Broker.Client;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Serialization.XPacketRpc;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;
 

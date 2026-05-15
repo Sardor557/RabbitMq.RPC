@@ -1,7 +1,6 @@
 namespace AsbtCore.Broker.Serialization.MemoryPack.Tests;
 
 using AsbtCore.Broker.Serialization.MemoryPack;
-using AsbtCore.Broker.Serialization.MemoryPack.Polymorphism;
 using AsbtCore.Broker.Serialization.MemoryPack.Tests.Fixtures;
 
 [NotInParallel]

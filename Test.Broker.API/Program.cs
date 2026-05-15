@@ -1,12 +1,12 @@
-using AsbtCore.Broker.API.Services;
-using AsbtCore.Broker.Demo.Contracts;
 using AsbtCore.Broker.Serialization.MemoryPack;
 using AsbtCore.Broker.Server;
+using Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using Server.Services;
 
-namespace AsbtCore.Broker.API
+namespace Server
 {
     public class Program
     {
@@ -25,7 +25,8 @@ namespace AsbtCore.Broker.API
             builder.Services
                 .AddRabbitRpcServer(builder.Configuration)
                 .UseMemoryPackRpcSerialization()
-                .Register<IUserService, UserService>(ServiceLifetime.Scoped);
+                .Register<IUserService, UserService>(ServiceLifetime.Scoped)
+                .Register<ITestDtoService, TestDtoService>(ServiceLifetime.Scoped);
 
             using var host = builder.Build();
 

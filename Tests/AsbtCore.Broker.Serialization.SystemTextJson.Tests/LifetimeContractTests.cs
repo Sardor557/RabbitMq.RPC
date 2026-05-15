@@ -1,6 +1,4 @@
-using System.Text.Json;
 using AsbtCore.Broker.Core;
-using AsbtCore.Broker.Serialization.SystemTextJson;
 
 namespace AsbtCore.Broker.Serialization.SystemTextJson.Tests;
 

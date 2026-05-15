@@ -1,4 +1,3 @@
-using System.Buffers;
 using AsbtCore.Broker.Serialization.XPacketRpc.Internal;
 
 namespace AsbtCore.Broker.Serialization.XPacketRpc.Tests;

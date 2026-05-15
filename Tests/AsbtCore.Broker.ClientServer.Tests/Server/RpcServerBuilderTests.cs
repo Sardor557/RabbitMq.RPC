@@ -1,4 +1,3 @@
-using System.Linq;
 using AsbtCore.Broker.ClientServer.Tests.Fixtures;
 using AsbtCore.Broker.Server;
 using Microsoft.Extensions.DependencyInjection;

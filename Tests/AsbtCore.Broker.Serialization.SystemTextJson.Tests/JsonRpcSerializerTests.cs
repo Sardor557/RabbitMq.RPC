@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AsbtCore.Broker.Core;
 using AsbtCore.Broker.Core.Abstractions;
-using AsbtCore.Broker.Serialization.SystemTextJson;
 
 namespace AsbtCore.Broker.Serialization.SystemTextJson.Tests;
 

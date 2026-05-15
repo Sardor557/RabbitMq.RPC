@@ -6,6 +6,8 @@ BenchmarkDotNet suite covering the v4.0 serialization layer, transport hot paths
 
 ```
 dotnet run -c Release --project Benchmarks/AsbtCore.Broker.Benchmarks --filter '*'
+
+dotnet run -c Release -- --filter *PayloadSizeBench*
 ```
 
 ## Targeted runs

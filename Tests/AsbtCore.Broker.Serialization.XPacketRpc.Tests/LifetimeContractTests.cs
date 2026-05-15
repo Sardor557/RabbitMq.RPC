@@ -1,5 +1,3 @@
-using AsbtCore.Broker.Serialization.XPacketRpc;
-
 namespace AsbtCore.Broker.Serialization.XPacketRpc.Tests;
 
 /// <summary>

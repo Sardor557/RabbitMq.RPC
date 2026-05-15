@@ -1,6 +1,4 @@
 using AsbtCore.Broker.Core;
-using AsbtCore.Broker.Serialization.MemoryPack;
-using MemoryPack;
 
 namespace AsbtCore.Broker.Serialization.MemoryPack.Tests;
 

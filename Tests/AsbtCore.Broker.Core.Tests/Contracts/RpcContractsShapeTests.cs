@@ -1,5 +1,3 @@
-using AsbtCore.Broker.Core;
-
 namespace AsbtCore.Broker.Core.Tests.Contracts;
 
 public sealed class RpcContractsShapeTests

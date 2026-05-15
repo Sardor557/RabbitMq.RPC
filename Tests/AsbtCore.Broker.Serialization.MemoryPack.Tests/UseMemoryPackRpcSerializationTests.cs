@@ -1,7 +1,6 @@
 using AsbtCore.Broker.Client;
 using AsbtCore.Broker.Core.Abstractions;
 using AsbtCore.Broker.Server;
-using AsbtCore.Broker.Serialization.MemoryPack;
 using AsbtCore.Broker.Serialization.MemoryPack.Reflection;
 using AsbtCore.Broker.Serialization.MemoryPack.Tests.Fixtures;
 using Microsoft.Extensions.Configuration;

@@ -1,6 +1,6 @@
-﻿using Contracts;
+﻿using AsbtCore.Broker.Demo.Contracts;
 
-namespace AsbtCore.Broker.Demo.Contracts
+namespace Contracts
 {
    
     public interface IUserService
