@@ -1,6 +1,6 @@
 namespace AsbtCore.Broker.Core
-{
-    public sealed class RpcRequest
+{    
+    public partial class RpcRequest
     {
         public string RequestId { get; set; } = default!;
         public string InterfaceName { get; set; } = default!;
@@ -8,13 +8,13 @@ namespace AsbtCore.Broker.Core
         public List<RpcArgument> Arguments { get; set; } = new();
     }
 
-    public sealed class RpcArgument
+    public partial class RpcArgument
     {
         public string TypeName { get; set; } = default!;
         public ReadOnlyMemory<byte> Payload { get; set; }
     }
 
-    public sealed class RpcResponse
+    public partial class RpcResponse
     {
         public string RequestId { get; set; } = default!;
         public bool Success { get; set; }
@@ -23,7 +23,7 @@ namespace AsbtCore.Broker.Core
         public RpcError? Error { get; set; }
     }
 
-    public sealed class RpcError
+    public partial class RpcError
     {
         public string Code { get; set; } = default!;
         public string Message { get; set; } = default!;

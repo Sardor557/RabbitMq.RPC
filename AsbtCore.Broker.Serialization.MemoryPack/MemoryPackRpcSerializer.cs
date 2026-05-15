@@ -10,10 +10,10 @@ public sealed class MemoryPackRpcSerializer : IRpcSerializer
 {
     static MemoryPackRpcSerializer()
     {
-        MemoryPackFormatterProvider.Register<RpcError>(new RpcErrorFormatter());
-        MemoryPackFormatterProvider.Register<RpcArgument>(new RpcArgumentFormatter());
-        MemoryPackFormatterProvider.Register<RpcRequest>(new RpcRequestFormatter());
-        MemoryPackFormatterProvider.Register<RpcResponse>(new RpcResponseFormatter());
+        //MemoryPackFormatterProvider.Register<RpcError>(new RpcErrorFormatter());
+        //MemoryPackFormatterProvider.Register<RpcArgument>(new RpcArgumentFormatter());
+        //MemoryPackFormatterProvider.Register<RpcRequest>(new RpcRequestFormatter());
+        //MemoryPackFormatterProvider.Register<RpcResponse>(new RpcResponseFormatter());
     }
 
     private readonly ReflectionMemoryPackRegistry registry;

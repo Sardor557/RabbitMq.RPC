@@ -1,5 +1,5 @@
 using AsbtCore.Broker.Client;
-using AsbtCore.Broker.Serialization.MemoryPack;
+using AsbtCore.Broker.Serialization. MemoryPack ;
 using Contracts;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -25,7 +25,7 @@ internal static class HostConfiguration
 
         builder.Services
             .AddRabbitRpcClient(builder.Configuration)
-            .UseMemoryPackRpcSerialization()
+            .UseMemoryPackRpcSerialization()                        
             .AddProxy<IUserService>()
             .AddProxy<ITestDtoService>();
 

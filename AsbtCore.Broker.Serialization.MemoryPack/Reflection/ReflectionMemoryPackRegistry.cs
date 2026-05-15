@@ -37,6 +37,11 @@ internal sealed class ReflectionMemoryPackRegistry
             foreach (var arg in type.GetGenericArguments()) EnsureRegistered(arg);
             return;
         }
+        // Skip BCL/system value types that MemoryPack handles natively (e.g. ReadOnlyMemory<byte>, Guid, DateTime).
+        if (type.IsValueType && type.Assembly == typeof(object).Assembly)
+        {
+            return;
+        }
 
         inFlightOnThisThread ??= new HashSet<Type>();
         if (inFlightOnThisThread.Contains(type))
