@@ -1,7 +1,6 @@
 ﻿using Asp.Versioning.ApiExplorer;
-using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.Extensions.Options;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Swashbuckle.AspNetCore.SwaggerUI;
 
@@ -14,7 +13,8 @@ namespace AsbtCore.Broker.API.Services
 
             var apiDescription = context.ApiDescription;
 
-            operation.Deprecated |= apiDescription.IsDeprecated();
+            operation.Deprecated |= context.ApiDescription.ActionDescriptor.EndpointMetadata
+                .OfType<ObsoleteAttribute>().Any();
 
             if (operation.Parameters == null) return;
 
@@ -27,7 +27,8 @@ namespace AsbtCore.Broker.API.Services
                     parameter.Description = description.ModelMetadata?.Description;
                 }
 
-                parameter.Required |= description.IsRequired;
+                if (parameter is OpenApiParameter concreteParam)
+                    concreteParam.Required |= description.IsRequired;
             }
         }
     }
@@ -86,17 +87,10 @@ namespace AsbtCore.Broker.API.Services
                     BearerFormat = "JWT",
                     Description = "Токен куйиш тартиби (Bearer <token>)",
                 });
-                c.AddSecurityRequirement(new OpenApiSecurityRequirement
+                c.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
                 {
                     {
-                        new OpenApiSecurityScheme
-                        {
-                            Reference = new OpenApiReference
-                            {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = "Bearer",
-                            },
-                        }, new List<string>()
+                        new OpenApiSecuritySchemeReference("Bearer"), new List<string>()
                     },
                 });
             });
