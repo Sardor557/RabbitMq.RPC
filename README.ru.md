@@ -36,6 +36,7 @@ graph TD
     end
     subgraph adapters["Адаптеры сериализации (выберите один)"]
         XPRPC["AsbtCore.Broker.Serialization.XPacketRpc\nБинарный, по умолчанию с v4.0"]
+        MEMPACK["AsbtCore.Broker.Serialization.MemoryPack\nБинарный, дружественный к reflection"]
         STJ["AsbtCore.Broker.Serialization.SystemTextJson\nJSON, v3-совместимый формат"]
     end
     subgraph internal["Внутренние (подтягиваются транзитивно)"]
@@ -48,15 +49,17 @@ graph TD
     SERVER --> CORE
     SERVER --> RMQ
     RMQ    --> CORE
-    XPRPC  --> CORE
-    STJ    --> CORE
+    XPRPC   --> CORE
+    MEMPACK --> CORE
+    STJ     --> CORE
 
-    style CLIENT fill:#4dabf7,color:#fff,stroke:#339af0
-    style SERVER fill:#69db7c,color:#fff,stroke:#40c057
-    style XPRPC  fill:#ffd43b,stroke:#f08c00
-    style STJ    fill:#ffd43b,stroke:#f08c00
-    style CORE   fill:#f8f9fa,stroke:#adb5bd
-    style RMQ    fill:#f8f9fa,stroke:#adb5bd
+    style CLIENT  fill:#4dabf7,color:#fff,stroke:#339af0
+    style SERVER  fill:#69db7c,color:#fff,stroke:#40c057
+    style XPRPC   fill:#ffd43b,stroke:#f08c00
+    style MEMPACK fill:#ffd43b,stroke:#f08c00
+    style STJ     fill:#ffd43b,stroke:#f08c00
+    style CORE    fill:#f8f9fa,stroke:#adb5bd
+    style RMQ     fill:#f8f9fa,stroke:#adb5bd
 ```
 
 | Пакет | Содержимое |
@@ -66,6 +69,7 @@ graph TD
 | `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` (возвращает `RpcClientBuilder`) / `RpcClientBuilder.AddProxy<T>()` |
 | `AsbtCore.Broker.Server` | `RpcServerBuilder`, `RpcServerRegistry`, `RpcRequestDispatcher`, `RpcServerHostedService`, DI: `AddRabbitRpcServer` |
 | `AsbtCore.Broker.Serialization.XPacketRpc` | `XPacketRpcSerializer` (бинарный), DI-расширение `UseXPacketRpcSerialization()`. **По умолчанию с v4.0.** |
+| `AsbtCore.Broker.Serialization.MemoryPack` | `MemoryPackRpcSerializer` (бинарный), DI-расширение `UseMemoryPackRpcSerialization()`. Поддерживает DTO из чужих сборок без `[MemoryPackable]` через reflection-форматтеры; опционально `Prewarm*` / `RegisterUnion<T>(...)`. |
 | `AsbtCore.Broker.Serialization.SystemTextJson` | `JsonRpcSerializer`, DI-расширение `UseJsonRpcSerialization()`. Drop-in shape для v3 JSON-провода. |
 
 ---
@@ -109,10 +113,12 @@ RabbitMq.RPC/
 ├─ AsbtCore.Broker.Client/                          фабрика прокси, RpcClientBuilder и DI
 ├─ AsbtCore.Broker.Server/                          диспетчер, реестр, RpcServerBuilder
 ├─ AsbtCore.Broker.Serialization.XPacketRpc/        бинарный IRpcSerializer-адаптер (по умолчанию)
+├─ AsbtCore.Broker.Serialization.MemoryPack/        бинарный IRpcSerializer-адаптер (reflection-friendly)
 ├─ AsbtCore.Broker.Serialization.SystemTextJson/    JSON IRpcSerializer-адаптер (v3-compat)
 └─ Tests/
    ├─ AsbtCore.Broker.Core.Tests/
    ├─ AsbtCore.Broker.ClientServer.Tests/
+   ├─ AsbtCore.Broker.Serialization.MemoryPack.Tests/
    ├─ AsbtCore.Broker.Serialization.SystemTextJson.Tests/
    └─ AsbtCore.Broker.Serialization.XPacketRpc.Tests/
 ```
@@ -430,6 +436,7 @@ v4.0 вводит подключаемый слой сериализации и 
 1. **Wire-формат бинарный по умолчанию.** Клиенты v3.x не могут общаться с серверами v4 (и наоборот) вне зависимости от выбора адаптера — фрейминг сменился.
 2. **Adapter-пакет сериализации теперь обязателен.** Установите **один** из:
    - `RabbitRpc.Serialization.XPacketRpc` — бинарный, рекомендуется для новых и высокопроизводительных деплоев.
+   - `RabbitRpc.Serialization.MemoryPack` — бинарный, на базе MemoryPack; поддерживает DTO из чужих сборок без `[MemoryPackable]`. См. раздел **Работа с DTO из сторонних сборок** выше.
    - `RabbitRpc.Serialization.SystemTextJson` — JSON-на-проводе (совместимая форма с v3 payload). Выбирайте, если нельзя сразу отказаться от v3 продьюсеров/консьюмеров и нужно faithful JSON-поведение.
 3. **Новый DI-вызов обязателен.** Добавьте `.UseXPacketRpcSerialization()` или `.UseJsonRpcSerialization()` в builder. Старт падает с `OptionsValidationException`, если `IRpcSerializer` не зарегистрирован.
 4. **`AddRabbitRpcClient(cfg)` возвращает `RpcClientBuilder`**, не `IServiceCollection`. Цепляйте `.UseXPacketRpcSerialization()` затем `.AddProxy<T>()` (v3-расширение `AddRpcProxy<T>()` удалено).

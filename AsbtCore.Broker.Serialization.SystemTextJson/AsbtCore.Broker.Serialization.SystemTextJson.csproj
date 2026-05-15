@@ -9,21 +9,27 @@
     <Description>System.Text.Json adapter for RabbitRpc — provides IRpcSerializer over System.Text.Json with a ReadOnlyMemory&lt;byte&gt; base64 converter.</Description>
     <PackageTags>rabbitmq;rpc;dotnet;json;serialization</PackageTags>
 
-    <Version>1.0.0</Version>
+    <Version>4.0.0</Version>
+    <PackageReleaseNotes>v4.0.0 — Unified release under the RabbitRpc 4.x line.
+- First release of the SystemTextJson adapter against the IRpcSerializer v4 surface (SerializeEnvelope / DeserializeEnvelope / SerializeFragment / DeserializeFragment).
+- Drop-in shape for v3 JSON wire — DTOs reflected at runtime, no source generator step.
+- ReadOnlyMemoryByteJsonConverter emits per-fragment payloads as base64-encoded JSON strings.
+- Compatible with RabbitRpc.Client 4.x and RabbitRpc.Server 4.x.</PackageReleaseNotes>
     <Authors>AsbtCore</Authors>
     <Company>AsbtCore</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Sardor557/AsbtCore.Broker</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker</RepositoryUrl>
+    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>true</IsPackable>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>

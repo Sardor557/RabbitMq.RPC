@@ -10,29 +10,29 @@
     <Description>MemoryPack binary adapter for RabbitRpc — provides IRpcSerializer over MemoryPack with hand-written formatters for Core wire types.</Description>
     <PackageTags>rabbitmq;rpc;dotnet;binary;serialization;memorypack</PackageTags>
 
-    <Version>1.1.0</Version>
-    <PackageReleaseNotes>
-1.1.0
-- Reflection-based formatter for DTOs without [MemoryPackable].
-- Lazy auto-discovery; no registration required for POCO / record / init-only DTOs.
-- New MemoryPackRpcOptions API: PrewarmType/PrewarmTypes/PrewarmAssembly and RegisterUnion for polymorphism.
+    <Version>4.0.0</Version>
+    <PackageReleaseNotes>v4.0.0 — Unified release under the RabbitRpc 4.x line.
+- Targets the IRpcSerializer v4 surface (SerializeEnvelope/DeserializeEnvelope/SerializeFragment/DeserializeFragment).
+- Compatible with RabbitRpc.Client 4.x and RabbitRpc.Server 4.x; wire format is incompatible with v3.x adapters.
+- Reflection-based formatter for DTOs without [MemoryPackable] (lazy auto-discovery for POCO / record / init-only DTOs).
+- MemoryPackRpcOptions API: PrewarmType / PrewarmTypes / PrewarmAssembly, and RegisterUnion&lt;T&gt; for polymorphism.
 - Wire format unchanged for [MemoryPackable] types; reflection layout matches declaration-order source-gen for plain DTOs.
-- Existing UseMemoryPackRpcSerialization() callers continue to work; new overload accepts Action&lt;MemoryPackRpcOptions&gt;.
-    </PackageReleaseNotes>
+- UseMemoryPackRpcSerialization() callers continue to work; new overload accepts Action&lt;MemoryPackRpcOptions&gt;.</PackageReleaseNotes>
     <Authors>AsbtCore</Authors>
     <Company>AsbtCore</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Sardor557/AsbtCore.Broker</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker</RepositoryUrl>
+    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>true</IsPackable>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>

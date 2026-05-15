@@ -2,13 +2,17 @@
 
 Server-side library for RabbitMQ RPC on .NET 10. Register implementations of contract interfaces with DI; a hosted service listens on the configured RabbitMQ route and dispatches each incoming request to the matching method.
 
-**v4.0** introduces a pluggable serialization layer — you must pair this package with **one** of the adapter packages: [`RabbitRpc.Serialization.XPacketRpc`](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) (binary, recommended) or [`RabbitRpc.Serialization.SystemTextJson`](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) (JSON).
+**v4.0** introduces a pluggable serialization layer — you must pair this package with **one** of the adapter packages:
+
+- [`RabbitRpc.Serialization.XPacketRpc`](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) — binary, source-gen, recommended default.
+- [`RabbitRpc.Serialization.MemoryPack`](https://www.nuget.org/packages/RabbitRpc.Serialization.MemoryPack) — binary, MemoryPack-backed; works with vendor DTOs without `[MemoryPackable]`.
+- [`RabbitRpc.Serialization.SystemTextJson`](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) — JSON, for debugging and v3 wire compatibility.
 
 ## Installation
 
 ```bash
 dotnet add package RabbitRpc.Server
-dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .SystemTextJson
+dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .MemoryPack / .SystemTextJson
 ```
 
 ## Configuration
@@ -85,4 +89,5 @@ Startup throws `OptionsValidationException` with a helpful message if no `IRpcSe
 
 - [RabbitRpc.Client](https://www.nuget.org/packages/RabbitRpc.Client) — client-side library with typed proxies.
 - [RabbitRpc.Serialization.XPacketRpc](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) — binary adapter (default since v4.0).
+- [RabbitRpc.Serialization.MemoryPack](https://www.nuget.org/packages/RabbitRpc.Serialization.MemoryPack) — MemoryPack binary adapter with reflection-friendly DTO discovery.
 - [RabbitRpc.Serialization.SystemTextJson](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) — JSON adapter for v3 wire compatibility.

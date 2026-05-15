@@ -2,13 +2,17 @@
 
 Client-side library for RabbitMQ RPC on .NET 10. Define a contract interface, register a typed proxy in DI, and call its methods like any local service — the request is sent via RabbitMQ and the response is awaited from the server.
 
-**v4.0** introduces a pluggable serialization layer — you must pair this package with **one** of the adapter packages: [`RabbitRpc.Serialization.XPacketRpc`](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) (binary, recommended) or [`RabbitRpc.Serialization.SystemTextJson`](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) (JSON).
+**v4.0** introduces a pluggable serialization layer — you must pair this package with **one** of the adapter packages:
+
+- [`RabbitRpc.Serialization.XPacketRpc`](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) — binary, source-gen, recommended default.
+- [`RabbitRpc.Serialization.MemoryPack`](https://www.nuget.org/packages/RabbitRpc.Serialization.MemoryPack) — binary, MemoryPack-backed; works with vendor DTOs without `[MemoryPackable]`.
+- [`RabbitRpc.Serialization.SystemTextJson`](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) — JSON, for debugging and v3 wire compatibility.
 
 ## Installation
 
 ```bash
 dotnet add package RabbitRpc.Client
-dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .SystemTextJson
+dotnet add package RabbitRpc.Serialization.XPacketRpc      # or .MemoryPack / .SystemTextJson
 ```
 
 ## Configuration
@@ -86,4 +90,5 @@ See the [repo migration guide](https://github.com/Sardor557/AsbtCore.Broker#migr
 
 - [RabbitRpc.Server](https://www.nuget.org/packages/RabbitRpc.Server) — server-side library that hosts RPC implementations.
 - [RabbitRpc.Serialization.XPacketRpc](https://www.nuget.org/packages/RabbitRpc.Serialization.XPacketRpc) — binary adapter (default since v4.0).
+- [RabbitRpc.Serialization.MemoryPack](https://www.nuget.org/packages/RabbitRpc.Serialization.MemoryPack) — MemoryPack binary adapter with reflection-friendly DTO discovery.
 - [RabbitRpc.Serialization.SystemTextJson](https://www.nuget.org/packages/RabbitRpc.Serialization.SystemTextJson) — JSON adapter for v3 wire compatibility.

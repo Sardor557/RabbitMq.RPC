@@ -36,6 +36,7 @@ graph TD
     end
     subgraph adapters["Serialization adapters (pick one)"]
         XPRPC["AsbtCore.Broker.Serialization.XPacketRpc\nBinary, default since v4.0"]
+        MEMPACK["AsbtCore.Broker.Serialization.MemoryPack\nBinary, reflection-friendly"]
         STJ["AsbtCore.Broker.Serialization.SystemTextJson\nJSON, v3-compat shape"]
     end
     subgraph internal["Internal (pulled transitively)"]
@@ -48,15 +49,17 @@ graph TD
     SERVER --> CORE
     SERVER --> RMQ
     RMQ    --> CORE
-    XPRPC  --> CORE
-    STJ    --> CORE
+    XPRPC   --> CORE
+    MEMPACK --> CORE
+    STJ     --> CORE
 
-    style CLIENT fill:#4dabf7,color:#fff,stroke:#339af0
-    style SERVER fill:#69db7c,color:#fff,stroke:#40c057
-    style XPRPC  fill:#ffd43b,stroke:#f08c00
-    style STJ    fill:#ffd43b,stroke:#f08c00
-    style CORE   fill:#f8f9fa,stroke:#adb5bd
-    style RMQ    fill:#f8f9fa,stroke:#adb5bd
+    style CLIENT  fill:#4dabf7,color:#fff,stroke:#339af0
+    style SERVER  fill:#69db7c,color:#fff,stroke:#40c057
+    style XPRPC   fill:#ffd43b,stroke:#f08c00
+    style MEMPACK fill:#ffd43b,stroke:#f08c00
+    style STJ     fill:#ffd43b,stroke:#f08c00
+    style CORE    fill:#f8f9fa,stroke:#adb5bd
+    style RMQ     fill:#f8f9fa,stroke:#adb5bd
 ```
 
 | Package | Contents |
@@ -66,6 +69,7 @@ graph TD
 | `AsbtCore.Broker.Client` | `RpcClient`, `RpcProxyFactory` (`DispatchProxy`), DI: `AddRabbitRpcClient` (returns `RpcClientBuilder`) / `RpcClientBuilder.AddProxy<T>()` |
 | `AsbtCore.Broker.Server` | `RpcServerBuilder`, `RpcServerRegistry`, `RpcRequestDispatcher`, `RpcServerHostedService`, DI: `AddRabbitRpcServer` |
 | `AsbtCore.Broker.Serialization.XPacketRpc` | `XPacketRpcSerializer` (binary), `UseXPacketRpcSerialization()` DI extension. **Default since v4.0.** |
+| `AsbtCore.Broker.Serialization.MemoryPack` | `MemoryPackRpcSerializer` (binary), `UseMemoryPackRpcSerialization()` DI extension. Supports vendor DTOs without `[MemoryPackable]` via reflection-built formatters; opt-in `Prewarm*` / `RegisterUnion<T>(...)`. |
 | `AsbtCore.Broker.Serialization.SystemTextJson` | `JsonRpcSerializer`, `UseJsonRpcSerialization()` DI extension. Drop-in shape for v3 JSON wire. |
 
 ---
@@ -109,10 +113,12 @@ RabbitMq.RPC/
 ├─ AsbtCore.Broker.Client/                          proxy factory, RpcClientBuilder & DI
 ├─ AsbtCore.Broker.Server/                          dispatcher, registry, RpcServerBuilder
 ├─ AsbtCore.Broker.Serialization.XPacketRpc/        binary IRpcSerializer adapter (default)
+├─ AsbtCore.Broker.Serialization.MemoryPack/        binary IRpcSerializer adapter (reflection-friendly)
 ├─ AsbtCore.Broker.Serialization.SystemTextJson/    JSON IRpcSerializer adapter (v3-compat)
 └─ Tests/
    ├─ AsbtCore.Broker.Core.Tests/
    ├─ AsbtCore.Broker.ClientServer.Tests/
+   ├─ AsbtCore.Broker.Serialization.MemoryPack.Tests/
    ├─ AsbtCore.Broker.Serialization.SystemTextJson.Tests/
    └─ AsbtCore.Broker.Serialization.XPacketRpc.Tests/
 ```
@@ -430,6 +436,7 @@ v4.0 introduces a pluggable serialization layer and ships a binary wire format b
 1. **Wire format is binary by default.** v3.x clients cannot talk to v4 servers (and vice versa) regardless of adapter choice — the framing changed.
 2. **A serialization adapter package is now required.** Install **one** of:
    - `RabbitRpc.Serialization.XPacketRpc` — binary, recommended for new and high-throughput deployments.
+   - `RabbitRpc.Serialization.MemoryPack` — binary, MemoryPack-backed; supports vendor DTOs without `[MemoryPackable]`. See **Working with vendor DTOs** below.
    - `RabbitRpc.Serialization.SystemTextJson` — JSON-on-the-wire (compatible shape with v3 payloads). Choose this when you cannot retire v3 producers/consumers immediately and need a faithful JSON behavior.
 3. **A new DI call is mandatory.** Add `.UseXPacketRpcSerialization()` or `.UseJsonRpcSerialization()` to your builder. Startup throws `OptionsValidationException` if no `IRpcSerializer` is registered.
 4. **`AddRabbitRpcClient(cfg)` returns `RpcClientBuilder`**, not `IServiceCollection`. Chain `.UseXPacketRpcSerialization()` then `.AddProxy<T>()` (the v3 `AddRpcProxy<T>()` extension was removed).

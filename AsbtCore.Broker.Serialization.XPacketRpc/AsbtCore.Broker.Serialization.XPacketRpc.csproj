@@ -10,21 +10,28 @@
     <Description>XPacketRpc binary adapter for RabbitRpc — provides IRpcSerializer over XPacketRpc with a bootstrap primitive codec library and a per-type fragment invoker cache.</Description>
     <PackageTags>rabbitmq;rpc;dotnet;binary;serialization;xpacketrpc</PackageTags>
 
-    <Version>1.0.0</Version>
+    <Version>4.0.0</Version>
+    <PackageReleaseNotes>v4.0.0 — Unified release under the RabbitRpc 4.x line.
+- First release of the XPacketRpc adapter against the IRpcSerializer v4 surface (SerializeEnvelope / DeserializeEnvelope / SerializeFragment / DeserializeFragment).
+- Default binary adapter for new and high-throughput RabbitRpc 4.x deployments.
+- Bootstrap primitive codec library (bool / numerics / string / Guid / DateTime / DateTimeOffset / TimeSpan / byte[] / ReadOnlyMemory&lt;byte&gt;).
+- Per-Type compiled FragmentInvokerCache (ConcurrentDictionary&lt;Type, Lazy&lt;FragmentInvoker&gt;&gt; with ExecutionAndPublication).
+- Compatible with RabbitRpc.Client 4.x and RabbitRpc.Server 4.x.</PackageReleaseNotes>
     <Authors>AsbtCore</Authors>
     <Company>AsbtCore</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Sardor557/AsbtCore.Broker</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker</RepositoryUrl>
+    <RepositoryUrl>https://github.com/Sardor557/AsbtCore.Broker.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>true</IsPackable>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>
